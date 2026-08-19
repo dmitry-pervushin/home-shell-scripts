@@ -19,6 +19,16 @@ function force_sudo() {
 	echo "OK"
 }
 
+function _require_safe_directory() {
+	local path="$1"
+	local description="${2:-directory}"
+
+	if [ -z "$path" ] || [ "$path" = "/" ] || [ ! -d "$path" ]; then
+		echo "Refusing destructive operation: unsafe $description: '$path'" >&2
+		return 1
+	fi
+}
+
 function mko() {
 	mkdir -p $TARGET_O
 	[ $PRJ_SILENT -eq 0 ] && echo "Directory $TARGET_O created"
@@ -54,7 +64,7 @@ function m() {
 }
 
 function Mm() {
-	PRJ_SLIENT=1 M && m
+	PRJ_SILENT=1 M && m
 }
 
 function Mz() {
@@ -178,46 +188,46 @@ function with() {
 
 
 function tgv-target() {
-	cd /root/tgv
-	rm *result*.csv
+	cd /root/tgv || return
+	rm -f -- ./*result*.csv
 	/home/nvidia/tegra_golden_value -c t194 -f internal*.csv
 }
 
 function tgv-host() {
-	TCPU="t194"
-	TBOARD="CHIEM2"
-        CONF=$1
-        DTB="$HOME/projects/nvidia/v5/NTG7/R/out/embedded-linux-t186ref-release/nvidia/kernel/arch/arm64/boot/dts/tegra194-chiem-c02-vm1.dtb"
+	local conf="${1:-LEBP}"
+	local dtb="$HOME/projects/nvidia/v5/NTG7/R/out/embedded-linux-t186ref-release/nvidia/kernel/arch/arm64/boot/dts/tegra194-chiem-c02-vm1.dtb"
+	local tgv="$HOME/P/nvidia/v5/NTG7/R/tools/golden-regs-rel/stable"
+	local ht="$tgv/gr_host_tools_python3"
+	local status
+	local -a conf_args
 
-
-        if [ x${CONF} == xLEBP ]; then
-              CONF="${CONF} -dtb ${DTB}"
-        else
-	      CONF="${CONF} -ig"
+	[ "$#" -gt 0 ] && shift
+	if [ "$conf" = "LEBP" ]; then
+		conf_args=(-dtb "$dtb")
+	else
+		conf_args=(-ig)
 	fi
 
-	shift
-        setup-vars-tegra
-#        TGV=/home/dimka/P/nvidia/v5/dev-main/R/tools/golden-regs-rel/stable
-        TGV=/home/dimka/P/nvidia/v5/NTG7/R/tools/golden-regs-rel/stable
-        HT=${TGV}/gr_host_tools_python3
-
-        set -x
-	time python3 ${HT}/tgv_tool/tgv.py        \
-	-c t194                 \
-	-m CHIEM2               \
-	-s 0004                 \
-	-r D                    \
-	-pkg VCM                \
-	-pf PDK                 \
-	-cr A02                 \
-	-type internal          \
-	-sw_conf LEBP           \
-	-dtb ${DTB}             \
-	-bb MICRON_16           \
-	-use_snapshot           \
-	-ppc ${HT}/common/PPC_files/T194/CHIEM2_Platform_POR_Configuration.csv
-        set +x
+	setup-vars-tegra || return
+	set -x
+	time python3 "$ht/tgv_tool/tgv.py" \
+		-c t194 \
+		-m CHIEM2 \
+		-s 0004 \
+		-r D \
+		-pkg VCM \
+		-pf PDK \
+		-cr A02 \
+		-type internal \
+		-sw_conf "$conf" \
+		"${conf_args[@]}" \
+		-bb MICRON_16 \
+		-use_snapshot \
+		-ppc "$ht/common/PPC_files/T194/CHIEM2_Platform_POR_Configuration.csv" \
+		"$@"
+	status=$?
+	set +x
+	return "$status"
 }
 
 function setup-vars-misra() {
@@ -240,9 +250,10 @@ function build-misra() {
 
 	setup-vars-tegra
 	setup-vars-misra "${nvc}"
+	_require_safe_directory "$VR" "VR" || return
         export NV_COMPONENT BUILD_BRAIN_COMPONENT TOP
 
-        rm --recursive --force ${VR}/artifacts || true
+	rm --recursive --force -- "$VR/artifacts"
 	pushd ${BUILD_AUTOMATION}/tools/build-scripts/gobuild 2>&1 >/dev/null
         env | grep NV
         ./gobuild.py
@@ -252,10 +263,11 @@ function build-misra() {
 function misra-scan() {
 
         setup-vars-tegra
+	_require_safe_directory "$VR" "VR" || return
 	COVERITY_HOME="${P4ROOT}/sw/mobile/tools/coverity/coverity_2023.6.0"
 	HTML=${VR}/html-output
 
-	rm --recursive --force ${HTML} || true
+	rm --recursive --force -- "$HTML"
 	${COVERITY_HOME}/bin/cov-analyze \
                 --dir=${VR}/emit-coverity \
                 --misra-config=${P4ROOT}/sw/tools/Coverity/2023.12.0/Linux64/config/MISRA/MISRA_c2012_nv.config \
@@ -269,31 +281,33 @@ function misra-scan() {
 }
 
 function tgv-host-ddpx() {
-	TCPU="t194"
-	TBOARD="E3550-XA"
-        DTB="~/projects/nvidia/v5/NTG/R/out/embedded-linux-t186ref-release/nvidia/kernel/arch/arm64/boot/dts/tegra194-e3550-0001-b03-A.dtb"
+	local conf="${1:-LEBP}"
+	local dtb="$HOME/projects/nvidia/v5/NTG/R/out/embedded-linux-t186ref-release/nvidia/kernel/arch/arm64/boot/dts/tegra194-e3550-0001-b03-A.dtb"
+	local tgv
+	local -a conf_args
 
-	shift
-        setup-vars-tegra
-	TGV=${VR}/tools/golden-regs-rel/1.7/gr_host_tools/tgv_tool/
-
-         if [ x${CONF} == xLEBP ]; then
-              CONF="E3550-XA_LEBP -dtb ${DTB}"
+	[ "$#" -gt 0 ] && shift
+	if [ "$conf" = "LEBP" ]; then
+		conf="E3550-XA_LEBP"
+		conf_args=(-dtb "$dtb")
 	fi
 
-	time python ${TGV}/tgv.py \
-		-c ${TCPU} 		\
-		-m ${TBOARD} 		\
-		-s 0001	 		\
-		-r B03			\
-		-pkg MID 		\
-		-pf PDK 		\
-		-cr A02 		\
-		-type internal 		\
-		-sw_conf ${CONF} 	\
-		-use_snapshot		\
-		-ppc ${TGV}/../common/PPC_files/T194/E3550_Platform_POR_Configuration.xlsx \
-		$*
+	setup-vars-tegra || return
+	tgv="$VR/tools/golden-regs-rel/1.7/gr_host_tools/tgv_tool"
+	time python "$tgv/tgv.py" \
+		-c t194 \
+		-m E3550-XA \
+		-s 0001 \
+		-r B03 \
+		-pkg MID \
+		-pf PDK \
+		-cr A02 \
+		-type internal \
+		-sw_conf "$conf" \
+		"${conf_args[@]}" \
+		-use_snapshot \
+		-ppc "$tgv/../common/PPC_files/T194/E3550_Platform_POR_Configuration.xlsx" \
+		"$@"
 }
 
 
@@ -414,13 +428,19 @@ function nv() {
 	#
 	# currently accepted options: s, r,d, q,f,l, 1 and -
 	#
-	SAFETY=none
-	RELEASE=release
-	TYPE=idk
-	CHIP="generic"
-	KVARIANT="/bin/true"
+	local SAFETY=none
+	local RELEASE=release
+	local TYPE=idk
+	local CHIP="generic"
+	local KVARIANT="/bin/true"
+	local arg unknown length char i
 
-	while true; do
+	if [ "$#" -eq 0 ]; then
+		echo "Usage: nv OPTIONS -- COMMAND [ARG ...]" >&2
+		return 2
+	fi
+
+	while [ "$#" -gt 0 ]; do
 		arg="$1"
 		unknown=0
 		length=${#arg}
@@ -447,7 +467,7 @@ function nv() {
 	construction="embedded-${TYPE} ${CHIP} ${SAFETY} ${RELEASE} external"
 	if [ ${TYPE} == "linux" ]; then construction="${construction} aarch64"; fi
 	# say "Construction = '${construction}'\n"
-	nv-do "${construction}" "${KVARIANT}" $*
+	nv-do "${construction}" "${KVARIANT}" "$@"
 }
 
 function setup() {
@@ -725,18 +745,19 @@ function yocto-topbuild() {
     local TBFL=/tmp/top-build-foundation.log
 
     setup-vars-tegra
-    rm -rf $VR/out/store_{f,l} $VR/out/store
+	_require_safe_directory "$VR" "VR" || return
+	rm -rf -- "$VR/out/store_f" "$VR/out/store_l" "$VR/out/store"
     pushd $VL 2>&1 > /dev/null
 
     cd $VL/embedded/release
-    rm ${TBLL}
+	rm -f -- "$TBLL"
     ./sdk/top-build $1 -p t186ref-lin64 -g external -x -s ${VR}/out/store_l 2>&1 | tee ${TBLL} || return
 #    mv ${VR}/out/store ${VR}/out/store_l
 
     cd $VF/embedded/release
-    rm ${TBFL}
+	rm -f -- "$TBFL"
     ./foundation/top-build -p t186ref $1 2>&1 | tee ${TBFL} || return
-    rm -rf ${VR}/out/store_f
+	rm -rf -- "$VR/out/store_f"
     mv $VR/out/store $VR/out/store_f
 
     popd 2>&1 > /dev/null
@@ -759,14 +780,19 @@ function v5-install() {
 function yocto-setup() {
   setup-vars-tegra
   yocto-directory-check || return 1
-  rm -rf $VR/out/install/pdk-all
+	_require_safe_directory "$VR" "VR" || return
+	rm -rf -- "$VR/out/install/pdk-all"
   mkdir -p $VR/out/install/pdk-all
   cd $VR/out/install/pdk-all
   tar -C $VR/out/install/pdk-all -zxf $VR/out/store_l/deferred_packaging/oss-src/oss-src.tgz
   tar -C $VL/out/install/pdk-all -jxf $VR/out/install/pdk-all/drive-t186ref-linux_src/kernel/linux.tar.bz2
   install-runs "${VR}/out/store_l" "${VR}/out/store_f"
   cd $VR/yocto
-  rm pdk
+	if [ -e pdk ] && [ ! -L pdk ]; then
+		echo "Refusing to replace non-symlink: $PWD/pdk" >&2
+		return 1
+	fi
+	rm -f -- pdk
   ln -sf $VR/out/install/pdk-all pdk
 #  D=${DISPLAY}
 #  unset DISPLAY
@@ -883,7 +909,8 @@ function initramfs_do() {
   eval "$*"
   popd
   initramfs_pack $I $R
-  sudo rm -rf $R
+	_require_safe_directory "$R" "temporary initramfs directory" || return
+	sudo rm -rf -- "$R"
 }
 
 function initramfs_do_18() {
@@ -902,7 +929,7 @@ function pack_linux() {
 }
 
 function notify() {
-	echo $'\e]9;$1\007'
+	printf '\e]9;%s\a' "$*"
 }
 
 function install-gcc-alternatives() {
@@ -1189,7 +1216,8 @@ function zap() {
 	pushd "$VL/out/embedded-linux-t186ref-release/nvidia/kernel_early_boot/" || return
 	mv kernel "$ebk"
 	mv "$ebk"/* .
-	rm -rf "$ebk"
+	_require_safe_directory "$PWD" "kernel early boot directory" || return
+	rm -rf -- "$ebk"
 	popd
 }
 
