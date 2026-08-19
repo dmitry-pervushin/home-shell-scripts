@@ -1,87 +1,23 @@
 #!/bin/bash
+#
+# This script is made entirely by me, dmitry pervushin
+# May be, it shows lack of programming skills. May be, it shows something else
+# In any way, feel free to use it of you need one.
+#
+# Author declines ANY responsability for ANY damages, direct or indirect, that
+# caused, will be caused or might be caused by this script. You use it on your
+# own risk
+#
 
-function say() {
-	echo -ne "\033[1;35m"
-	echo -ne $*
-	echo -ne "\033[0m"
+PRJ_VERSION="20260609"
+
+[ -r "$HOME/hosts/load-private" ] && . "$HOME/hosts/load-private"
+
+function force_sudo() {
+	echo "Might need your password"
+	sudo -v
+	echo "OK"
 }
-
-function late_init() {
-	echo -n ""
-}
-
-function _filesize() {
-	ls -nl $1 | awk '{print $5}'
-}
-
-function _do() {
-	VAR=$1
-	shift
-	$* $VAR	
-}
-
-function _do_all() {
-	for v in $1; do
-		_do $v $2
-	done	
-}
-
-VARIABLES="TARGET_O TARGET_CPUARCH TARGET_CROSS TARGET_ROOT TARGET_TFTP \
-	TARGET_CODE TARGET_TARGET_BIN TARGET_PATH TARGET_UBOOT_BIN	\
-	HEAD
-	TARGET_MAKE	\
-	TARGET_CUSTOM_CP JOPT
-	GIT_AUTHOR_EMAIL GIT_AUTHOR_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_NAME"
-ROOT="/"
-FQDN_PRJ_VARS=""
-PRJ_VARS1="@project-vars"
-PRJ_VARS2="project-vars"
-DEFAULTS1="$HOME/defaults/$PRJ_VARS1"
-DEFAULTS2="$HOME/defaults/$PRJ_VARS2"
-SCRIPT=$(cd `dirname "${BASH_SOURCE[0]}"` && pwd)/`basename "${BASH_SOURCE[0]}"`
-PRJ_SILENT=${PRJ_SILENT:=0}
-
-_do_all "$VARIABLES" unset
-
-[ -x $DEFAULTS1 ] && . $DEFAULTS1
-[ -x $DEFAULTS2 ] && . $DEFAULTS2
-
-pushd . > /dev/null
-
-src[0]=""
-src_index=-1
-
-while [ "`pwd`" != "$ROOT" ]; do
-	[ -e $PRJ_VARS1 ] && src[++src_index]="`pwd`/$PRJ_VARS1"
-	[ -e $PRJ_VARS2 ] && src[++src_index]="`pwd`/$PRJ_VARS2"
-	cd ..
-done
-popd > /dev/null 2>&1
-
-while [ $src_index -ge 0 ]; do
-	a=${src[src_index--]}
-	[ $PRJ_SILENT -eq 0 ] && say "### @@ $a\n"
-	pushd `dirname $a` > /dev/null
-	source ./"`basename $a`"
-	popd > /dev/null
-done
-
-TARGET_TARGET_BIN="$TARGET_TARGET-${TARGET_CODE}${TARGET_CODE2}"
-TARGET_PATH="arch/$TARGET_CPUARCH/boot"
-TARGET_UBOOT_BIN="uboot-$TARGET_CODE-dimka.bin"
-TARGET_O="${TARGET_O:-${TARGET_O_PREFIX}/o-$TARGET_CODE}"
-TARGET_U="${TARGET_U:-${TARGET_O_PREFIX}/u-$TARGET_CODE}"
-if [ ! -z "$TARGET_CP" ]; then
-	TARGET_CUSTOM_CP=${TARGET_CP}
-fi
-
-# start with exporting variables...
-_do_all "$VARIABLES" export
-late_init
-# the 2nd chance to export variables
-_do_all "$VARIABLES" export
-
-alias V=
 
 function mko() {
 	mkdir -p $TARGET_O
@@ -97,15 +33,16 @@ function mkroot() {
 }
 
 function M() {
-	PRJ_SILENT=1 mko
-	PRJ_SILENT=1 mkroot
-	$TARGET_MAKE				\
+	PRJ_SILENT=1 mko && mkroot
+	set -x
+	make 					\
 		O=$TARGET_O 			\
 		ARCH=$TARGET_CPUARCH 		\
 		CROSS_COMPILE=$TARGET_CROSS 	\
 		INSTALL_MOD_PATH=$TARGET_ROOT 	\
 		$* 				\
 		$JOPT
+	set +x
 }
 
 function MM() {
@@ -113,35 +50,7 @@ function MM() {
 }
 
 function m() {
-	PRJ_SILENT=1 M modules
-	if [ $? -eq 0 ] ; then
-	   sudo $TARGET_MAKE			\
-		O=$TARGET_O 			\
-		ARCH=$TARGET_CPUARCH 		\
-		CROSS_COMPILE=$TARGET_CROSS 	\
-		INSTALL_MOD_PATH=$TARGET_ROOT 	\
-		$JOPT 				\
-		modules_install 
-	fi
-}
-
-function mmcfg() {
-	NCFG=`ls *.cfg | wc -l`
-	if [ $NCFG -ne 1 ]; then
-		echo "Ohh, $NCFG config files found, don't know which to use...."
-		return
-	fi
-	REL=`ls *.cfg | sed s/entrynav_TEGRA_// | sed s/_kernel_config.cfg//`
-	echo "Found release \"$REL\", continue?"
-	read cont
-	if [ y$cont != yy ]; then
-		echo "Bailing out"
-		return
-	fi
-	echo "TARGET_CODE=$REL" >> @project-vars
-	setup
-	mko
-	cp -v *.cfg ${TARGET_O}/.config
+	PRJ_SILENT=1 M modules && M modules_install
 }
 
 function Mm() {
@@ -157,7 +66,7 @@ function Mu() {
 }
 
 function do_copy_using1() {
-	FS=`_filesize $TARGET_O/$2`
+	FS=$(_filesize $TARGET_O/$2)
 	[ $PRJ_SILENT -eq 0 ] && echo "# ($TARGET_O/$2) =>"
 	[ $PRJ_SILENT -eq 0 ] && echo "# => ($TARGET_TFTP) $3 size $FS"
 	$1 $TARGET_O/$2 $TARGET_TFTP/$3
@@ -194,11 +103,11 @@ function Cc() {
 }
 
 function U() {
-	$TARGET_MAKE CROSS_COMPILE=$TARGET_CROSS O=$TARGET_U ARCH=${TARGET_CPUARCH} $*
+	make CROSS_COMPILE=$TARGET_CROSS O=$TARGET_U ARCH=${TARGET_CPUARCH} $*
 }
 
 function u() {
-	fs=`_filesize $TARGET_U/u-boot.bin`
+	fs=$(_filesize $TARGET_U/u-boot.bin)
 	[ $PRJ_SILENT -eq 0 ] && echo "# => ($TARGET_TFTP) $TARGET_UBOOT_BIN size ${FS}"
 	scp $TARGET_U/u-boot.bin $TARGET_TFTP/$TARGET_UBOOT_BIN
 }
@@ -234,30 +143,323 @@ function v() {
 	vim --cmd "set tags=${TARGET_O}/tags,${TARGET_U}/ctags" $args
 }
 
-function cimg() {
-	M $TARGET_TARGET 
-        cp -v "$TARGET_O/$TARGET_PATH/$TARGET_TARGET" /tmp/Image
-	pushd ~/projects/nvidia/host-flashing-utilities > /dev/null
-	cp -v /tmp/Image kernel/Image
-	cp -v /tmp/Image maintenance/zImage_initramfs
-	sh -x create_images.sh
-	mkdir -p out
-	cp -v images/kernel_images/loadrealprim.img ~/out/loadrealprim-$TARGET_CODE.img
-	cp -v images/kernel_images/loadrecov.img ~/out/loadrecov-$TARGET_CODE.img
-	popd > /dev/null
-	
+function build-v2() {
+	export TEGRA_TOP=$PWD
+	echo $TEGRA_TOP
+	export EMBEDDED_TARGET_PLATFORM=p852m-linux
+	export TEGRA_ROOT=${TEGRA_TOP}/core
+	export KERN_DIR=${TEGRA_TOP}/kernel
+	export TARGET_CPU=armv6
+	export TARGET_OS=linux
+	export TARGET_OS_SUBTYPE=gnu_linux
+	export BUILD_FLAVOR=release
+	export TARGET_NFS_ROOT=${TEGRA_ROOT}/targetfs
+	export NV_EMBEDDED_BUILD=1
+	export TARGET_BOARD=p852
+	export TARGET_BOOT_MEDIUM=nand
+	export TARGET_FLOAT_ABI_HARD=1
+	export WIN_INTERFACE=x11
+	export TARGET_PLATFORM=$EMBEDDED_TARGET_PLATFORM
+	export ARMLMD_LICENSE_FILE=1924@sc-lic-18:1924@sac-lic-19
+
+	make -C core/mobile_linux/make $*
+}
+
+function flash-v2() {
+	pushd utils/scripts/burnflash
+	./burnflash.sh -S 23 -Z lzf -n eth0 -b nand
+	popd
+}
+
+function with() {
+	python3 /home/dimka/projects/nvidia/lab/with/main.py $* | bash
+#	python /opt/shoelace/with.py $*
+}
+
+
+function tgv-target() {
+	cd /root/tgv
+	rm *result*.csv
+	/home/nvidia/tegra_golden_value -c t194 -f internal*.csv
+}
+
+function tgv-host() {
+	TCPU="t194"
+	TBOARD="CHIEM2"
+        CONF=$1
+        DTB="$HOME/projects/nvidia/v5/NTG7/R/out/embedded-linux-t186ref-release/nvidia/kernel/arch/arm64/boot/dts/tegra194-chiem-c02-vm1.dtb"
+
+
+        if [ x${CONF} == xLEBP ]; then
+              CONF="${CONF} -dtb ${DTB}"
+        else
+	      CONF="${CONF} -ig"
+	fi
+
+	shift
+        setup-vars-tegra
+#        TGV=/home/dimka/P/nvidia/v5/dev-main/R/tools/golden-regs-rel/stable
+        TGV=/home/dimka/P/nvidia/v5/NTG7/R/tools/golden-regs-rel/stable
+        HT=${TGV}/gr_host_tools_python3
+
+        set -x
+	time python3 ${HT}/tgv_tool/tgv.py        \
+	-c t194                 \
+	-m CHIEM2               \
+	-s 0004                 \
+	-r D                    \
+	-pkg VCM                \
+	-pf PDK                 \
+	-cr A02                 \
+	-type internal          \
+	-sw_conf LEBP           \
+	-dtb ${DTB}             \
+	-bb MICRON_16           \
+	-use_snapshot           \
+	-ppc ${HT}/common/PPC_files/T194/CHIEM2_Platform_POR_Configuration.csv
+        set +x
+}
+
+function setup-vars-misra() {
+	BUILD_AUTOMATION="/home/dimka/projects/nvidia/coverity/build-automation"
+	COVERITY_HOME="${P4ROOT}/sw/mobile/tools/coverity/coverity_2023.6.0"
+
+	NV_COMPONENT="$1"
+	BUILD_BRAIN_COMPONENT=$(echo -n "${nvc}" | tr ' ' '_')
+	TOP=${VR}
+	HTML=${VR}/html-output
+}
+
+function build-misra() {
+	local nvc=$1
+
+	if [ -z "${nvc}" ]; then
+		echo "Usage: build-misra 'NV_COMPONENT'"
+		return
+	fi
+
+	setup-vars-tegra
+	setup-vars-misra "${nvc}"
+        export NV_COMPONENT BUILD_BRAIN_COMPONENT TOP
+
+        rm --recursive --force ${VR}/artifacts || true
+	pushd ${BUILD_AUTOMATION}/tools/build-scripts/gobuild 2>&1 >/dev/null
+        env | grep NV
+        ./gobuild.py
+	popd 2>&1 >/dev/null
+}
+
+function misra-scan() {
+
+        setup-vars-tegra
+	COVERITY_HOME="${P4ROOT}/sw/mobile/tools/coverity/coverity_2023.6.0"
+	HTML=${VR}/html-output
+
+	rm --recursive --force ${HTML} || true
+	${COVERITY_HOME}/bin/cov-analyze \
+                --dir=${VR}/emit-coverity \
+                --misra-config=${P4ROOT}/sw/tools/Coverity/2023.12.0/Linux64/config/MISRA/MISRA_c2012_nv.config \
+                --strip-path=/home/dimka/projects/nvidia/v6/r37/R \
+                --disable-default --ignore-deviated-findings \
+                -co MISRA_CAST:non_negative_literals_may_be_unsigned:true \
+                --jobs 8 --max-mem 500 \
+                --tu 36727,36728,36729,36730,36731,36732,36733,36734,36735,36736,36737,36738
+	${COVERITY_HOME}/bin/cov-format-errors --dir=${VR}/emit-coverity --html-output=${HTML} \
+		--include-files='./qnx/src/resmgrs/nvdvms/*'
+}
+
+function tgv-host-ddpx() {
+	TCPU="t194"
+	TBOARD="E3550-XA"
+        DTB="~/projects/nvidia/v5/NTG/R/out/embedded-linux-t186ref-release/nvidia/kernel/arch/arm64/boot/dts/tegra194-e3550-0001-b03-A.dtb"
+
+	shift
+        setup-vars-tegra
+	TGV=${VR}/tools/golden-regs-rel/1.7/gr_host_tools/tgv_tool/
+
+         if [ x${CONF} == xLEBP ]; then
+              CONF="E3550-XA_LEBP -dtb ${DTB}"
+	fi
+
+	time python ${TGV}/tgv.py \
+		-c ${TCPU} 		\
+		-m ${TBOARD} 		\
+		-s 0001	 		\
+		-r B03			\
+		-pkg MID 		\
+		-pf PDK 		\
+		-cr A02 		\
+		-type internal 		\
+		-sw_conf ${CONF} 	\
+		-use_snapshot		\
+		-ppc ${TGV}/../common/PPC_files/T194/E3550_Platform_POR_Configuration.xlsx \
+		$*
+}
+
+
+function export-tegratop() {
+	local TEGRA_TOP=''
+	pushd $1/.. 2>&1 >/dev/null
+	TEGRA_TOP=$(/bin/pwd)
+	popd 2>&1 >/dev/null
+	echo -n $TEGRA_TOP
+}
+
+function setup-vars-tegra() {
+	TEGRA_REPO=$(nvpath -n --action=root)
+	TEGRA_TOP=$(export-tegratop $TEGRA_REPO)
+	VF=$TEGRA_TOP/foundation
+	VL=$TEGRA_TOP/linux
+	VQ=$TEGRA_TOP/qnx
+        VR=$TEGRA_REPO
+        say "### VR = ${VR}\n"
+	export TEGRA_TOP VF VL VQ VR
+}
+
+function netapp39() {
+   tr '\\' '/' | sed -e 's~/netapp39~netapp39~' | sed -e 's~//~~'
+}
+
+function mount-smbfs() {
+   force_sudo
+   sudo mkdir -p /mnt/smb
+   sudo mount -t cifs -o user="${NVIDIA_SMB_USER:?NVIDIA_SMB_USER is not configured}",password="${NVIDIA_SMB_PASSWORD:?NVIDIA_SMB_PASSWORD is not configured}",domain=nvidia.com //$(netapp39 $1) /mnt/smb
+}
+
+function hwy-do() {
+   local COMMAND=$1
+   lftp -e "set ssl:verify-certificate no; ${COMMAND}; quit" \
+		ftp://${NVIDIA_HWY_USER:?NVIDIA_HWY_USER is not configured}:${NVIDIA_HWY_PASSWORD:?NVIDIA_HWY_PASSWORD is not configured}@hqnvhwy02
+}
+
+function hwy-get() {
+   local DIR_PATH="$1"
+   local WILDCARD="$2"
+   hwy-do "ls ${DIR_PATH}/${WILDCARD}; mirror $DIR_PATH -r -I $WILDCARD --use-pget-n=10"
+}
+
+function hwy() {
+   local DIR_PATH=$1
+   local WILDCARD="*.7z*"
+   hwy-get "${DIR_PATH}" "${WILDCARD}"
+}
+
+
+function hwy-ls() {
+   local DIR_PATH=$1
+   hwy-do "ls ${DIR_PATH}"
+}
+
+function download-build() {
+   set -x
+   pushd $(pwd) 2>&1 > /dev/null
+   W=$(mktemp --directory)
+   mkdir -p $W/F && cd $W/F && hwy $(echo "$1" | netapp39)
+   mkdir -p $W/L && cd $W/L && hwy $(echo "$2" | netapp39)
+   cd $W && for zip in F/*/*001 L/*/*001; do 7z x $zip; done
+   popd 2>&1 >/dev/null
+   set +x
+   echo "Downloaded to ${W}"
+}
+
+function install-runs() {
+   export _NV_INSTALL_LICENSE_BYPASS_="Destination Tegra Dominance"
+   export D=$DISPLAY
+   unset DISPLAY
+
+   for run in {$1,$2}/*foundation*-toolchain.run \
+            {$1,$2}/*foundation*-release-sdk.run \
+            {$1,$2}/*foundation*-release-pdk.run \
+            {$1,$2}/*foundation*-oss-src.run \
+            {$1,$2}/*linux*-initramfs.run \
+            {$1,$2}/*linux*-rootfs.run \
+            {$1,$2}/*linux*-oss-minimal-sdk.run \
+            {$1,$2}/*linux*-oss-minimal-pdk.run \
+            {$1,$2}/*linux*-oss-src.run \
+            {$1,$2}/*linux*-nv-minimal-sdk.run \
+            {$1,$2}/*linux*-nv-minimal-pdk.run; do
+      if [ ! -f "${run}" ]; then
+          echo "${run} does not exist, skipping"
+          continue
+      fi
+      yes '' | bash ${run}
+   done
+   export DISPLAY=$D
+}
+
+function configure-tegra() {
+	echo -ne ''
+	echo -ne "source ${VR}/tmake/scripts/envsetup.sh 2>&1 >/dev/null; "
+	echo -ne "choose $1;"
+	echo -ne "$2;"
+	echo -ne ''
+}
+
+
+function nv-do() {
+	local CFG_ARGS=$1
+	shift
+	local CFG_EXTRA=$1
+	shift
+	local CMD_ARGS="$*"
+
+        setup-vars-tegra
+#	eval $(configure-tegra "${CFG_ARGS}" "${CFG_EXTRA}")
+        eval "source ${VR}/tmake/scripts/envsetup.sh 2>&1 >/dev/null; choose ${CFG_ARGS}; ${CFG_EXTRA}"
+	say "Running $CMD_ARGS\n"
+	eval $CMD_ARGS
 }
 
 function nv() {
-	say ">>> Running nv stuff \"$*\"\n"
-	$*
+	#
+	# currently accepted options: s, r,d, q,f,l, 1 and -
+	#
+	SAFETY=none
+	RELEASE=release
+	TYPE=idk
+	CHIP="generic"
+	KVARIANT="/bin/true"
+
+	while true; do
+		arg="$1"
+		unknown=0
+		length=${#arg}
+		for ((i = 0; i < length; i++)); do
+			char="${arg:i:1}"
+			case "${char}" in
+			s) SAFETY="safety";;
+			r) RELEASE="release";;
+			d) RELEASE="debug";;
+			q) TYPE="qnx";;
+			f) TYPE="foundation";;
+			l) TYPE="linux";;
+			1) CHIP="t186ref";;
+			8) CHIP="t186ref";;
+			-) unknown=1;shift;break;;
+			*) unknown=1;break;;
+			esac
+		done
+		if [ ${unknown} -ne 0 ]; then
+			break
+		fi
+		shift
+	done
+	construction="embedded-${TYPE} ${CHIP} ${SAFETY} ${RELEASE} external"
+	if [ ${TYPE} == "linux" ]; then construction="${construction} aarch64"; fi
+	# say "Construction = '${construction}'\n"
+	nv-do "${construction}" "${KVARIANT}" $*
 }
 
 function setup() {
-	for alias in M MM Mz Mu C U u Uu MC cfi L MCL CL v m Mm mko mkroot mmcfg cimg nv; do
-		alias $alias=". $SCRIPT $alias"
-	done
-	alias diff='/usr/bin/diff -uNr -X ~/defaults/dontdiff'
+	[ -f ~/.nvidia-colossus-host ] && get-colossus
+
+#	for alias in M MM Mz Mu C U u Uu MC cfi L MCL CL v m Mm mko mkroot nv NC nvf nvq nvl; do
+#		alias $alias=". $SCRIPT $alias"
+#	done
+
+#        setup-vars-tegra
+	say "### setup, version ${PRJ_VERSION}\n"
+#	cd $HOME
 }
 
 function fix_arch() {
@@ -268,7 +470,781 @@ function fix_arch() {
 	fi
 }
 
-cmd=$1
+function ps1() {
+	local param_color=$1
+
+	if [ "$(is-git-controlled)" != "" ]; then
+		echo -n "\[${COLOR_Green}\]git \[${COLOR_Reset}\]"
+	fi
+	#echo -n '\[$(is-git-shallowed)\] * \[${COLOR_Reset}\]'
+	echo -n "\[${param_color}\]"
+	echo -n '(\h:'
+	split_pwd=($(pwd | sed "s:^${HOME}:/~:" | tr ' ' '\a' | tr '/' ' '))
+	for pwd_item in ${split_pwd[*]}; do
+		color="${param_color}"
+                #
+                # Oooh, welcome to regex horror
+                #
+                # it passes if the string (bnetween ^...$) is:
+                #     V + character
+                #     R + digits
+                #     REL + digits
+                #     REL- + digits
+                #     NTG6 or NTG7
+                #     MAIN, DEV-MAIN or MBITION
+                #
+		if echo -n "${pwd_item^^}" | /usr/bin/grep --quiet -E '^(V.?|R[0-9]+|REL[0-9]+|REL-.*|NTG[6-7]|MAIN|DEV-MAIN|MBITION)$'; then
+			color="${COLOR_Cyan}"
+		fi
+		echo -n "\[${color}\]"
+		if [ ${pwd_item} != "~" ]; then
+			echo -n "/"
+		fi
+		echo -n "${pwd_item}" | tr '\a' ' '
+	done
+	echo -n ')\[${COLOR_Reset}\] '
+	echo -n "% "
+}
+
+function ps1_helper() {
+	export PS1=$(ps1 $1)
+}
+
+function say() {
+	echo -ne "\033[1;35m"
+	echo -ne $*
+	echo -ne "\033[0m"
+}
+
+function late_init() {
+	echo -n ""
+}
+
+function _filesize() {
+	ls -nl $1 | awk '{print $5}'
+}
+
+function _do() {
+	VAR=$1
+	shift
+	$* $VAR
+}
+
+function _do_all() {
+	for v in $1; do
+		_do $v $2
+	done
+}
+
+function shell-scripts-update() {
+	local repo="${SHELL_SCRIPTS_REPO:-$HOME/P/home-stuff}"
+	git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+		echo "Not a Git work tree: $repo" >&2
+		return 1
+	}
+	git -C "$repo" pull --rebase --autostash "$@" || return
+	make -C "$repo/shell-scripts" install
+}
+
+function shell-scripts-diff() {
+	local repo="${SHELL_SCRIPTS_REPO:-$HOME/P/home-stuff}"
+	git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+		echo "Not a Git work tree: $repo" >&2
+		return 1
+	}
+
+	git -C "$repo" status --short --branch -- shell-scripts
+	git -C "$repo" diff --check -- shell-scripts || return
+	git -C "$repo" diff --cached --check -- shell-scripts || return
+	git -C "$repo" diff -- shell-scripts
+	git -C "$repo" diff --cached -- shell-scripts
+}
+
+function shell-scripts-push() {
+	local repo="${SHELL_SCRIPTS_REPO:-$HOME/P/home-stuff}"
+	local message="${*:-Update shell scripts}"
+	git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+		echo "Not a Git work tree: $repo" >&2
+		return 1
+	}
+
+	git -C "$repo" add -- shell-scripts || return
+	git -C "$repo" diff --cached --check -- shell-scripts || return
+	if ! git -C "$repo" diff --cached --quiet -- shell-scripts; then
+		git -C "$repo" commit -m "$message" -- shell-scripts || return
+	else
+		echo "No shell-scripts changes to commit"
+	fi
+	git -C "$repo" push
+}
+
+function repo-top() {
+       repo forall -c 'git checkout -b T HEAD; git branch --delete --force t; git checkout -b t HEAD; git branch --delete --force T'
+}
+
+function gerrit-push() {
+       say "Pushing changed for review to branch \"$1\"\n"
+       git push origin HEAD:refs/for/$1
+}
+
+function unshallow() {
+       git fetch --unshallow origin
+}
+
+function repo-setup-mods() {
+	local BRANCH=$1
+	local REF=/y/reference/$1
+	local TEGRA_R="M"
+
+	mkdir ${TEGRA_R}
+	cd ${TEGRA_R}
+	repo init \
+		--manifest-url=git://git-master.nvidia.com/tegra/manifest.git 	\
+		--manifest-branch=${BRANCH} 					\
+		--manifest-name=mods-linux.xml					\
+		--reference=${REF}
+}
+
+
+function repo-setup-auto() {
+	local BRANCH=$1
+	local REF=/y/reference/$1
+	local TEGRA_R="R"
+        local REF_OPTION
+
+	mkdir -p ${TEGRA_R}
+	ln -sf ${TEGRA_R} foundation
+	ln -sf ${TEGRA_R} linux
+	ln -sf ${TEGRA_R} qnx
+	cd ${TEGRA_R}
+        if [ -d ${REF} ]; then
+             REF_OPTION="--reference=${REF}"
+        else
+             say "Warning - ${REF} does not exist, using without reference"
+             REF_OPTION=""
+        fi
+	repo init \
+		--manifest-url=git://git-master.nvidia.com/tegra/manifest.git 	\
+		--manifest-branch=${BRANCH} 					\
+		--manifest-name=automotive.xml 					\
+		--groups=auto-foundation,auto-linux,auto-yocto,auto-qnx,virt-doc\
+                ${REF_OPTION}
+
+}
+
+function repo-sync() {
+	local JOPT=$*
+	shift
+
+	repo sync  ${JOPT}			\
+		--no-tags 			\
+		--current-branch		\
+		--no-clone-bundle
+}
+
+function parent-has() {
+	local PWD_SOURCE="$(pwd)"
+	pushd "${PWD_SOURCE}" > /dev/null
+	while [ "$(pwd)" != "/" ]; do
+		for candidate in $*; do
+			if [ ! -e $candidate ]; then
+				cd ..
+				continue 2 # continue the outer loop
+			fi
+		done
+		break
+	done
+	if [ $# -ge 2 ]; then
+		if [ "$2" != "" ]; then
+			cd $2
+		fi
+	fi
+	echo -ne $(pwd)
+	popd >/dev/null
+}
+
+function is-under() {
+	local PWD_SOURCE="$(pwd)"
+	local R=0
+	pushd "${PWD_SOURCE}" >/dev/null
+
+	pushd $1 >/dev/null;
+        if [ $? -ne 0 ]; then
+		popd > /dev/null
+		echo -ne 0
+		return
+	fi
+
+        local P1=$(/bin/pwd); popd > /dev/null
+	pushd $2 >/dev/null
+	while true; do
+		local P=$(/bin/pwd)
+		if [ "$P" == "/" ]; then
+			break
+		fi
+		if [ "$P" == "$P1" ]; then
+			R=1
+			break
+		fi
+		cd ..
+	done
+	popd >/dev/null
+	popd >/dev/null
+	echo -ne $R
+}
+
+function is-git-controlled() {
+	local gitroot=$(parent-has ".git")
+	if [ ${gitroot} == "/"  ]; then
+		echo ''
+		return
+	fi
+	echo "${gitroot}/.git"
+}
+
+function is-git-shallowed() {
+	gitroot=$(is-git-controlled)
+	if [ -z ${gitroot} ]; then
+		echo -n "${COLOR_Black}"
+		return
+	fi
+	echo -n "${COLOR_Green}"
+}
+
+
+function yocto-directory-check() {
+  pushd ${VF} || return 1
+  popd
+  pushd ${VL} || return 1
+  popd
+  return 0
+}
+
+function yocto-topbuild() {
+    local TBLL=/tmp/top-build-linux.log
+    local TBFL=/tmp/top-build-foundation.log
+
+    setup-vars-tegra
+    rm -rf $VR/out/store_{f,l} $VR/out/store
+    pushd $VL 2>&1 > /dev/null
+
+    cd $VL/embedded/release
+    rm ${TBLL}
+    ./sdk/top-build $1 -p t186ref-lin64 -g external -x -s ${VR}/out/store_l 2>&1 | tee ${TBLL} || return
+#    mv ${VR}/out/store ${VR}/out/store_l
+
+    cd $VF/embedded/release
+    rm ${TBFL}
+    ./foundation/top-build -p t186ref $1 2>&1 | tee ${TBFL} || return
+    rm -rf ${VR}/out/store_f
+    mv $VR/out/store $VR/out/store_f
+
+    popd 2>&1 > /dev/null
+
+    notify "yocto-topbuild done"
+}
+
+function v5-install() {
+  export _NV_INSTALL_LICENSE_BYPASS_="Destination Tegra Dominance"
+  export D=$DISPLAY
+  unset DISPLAY
+  yes '' | bash $VL/out/store/drive-*-linux-*-oss-minimal-pdk.run
+  yes '' | bash $VL/out/store/drive-*-linux-*-nv-minimal-sdk.run
+  yes '' | bash $VL/out/store/drive-*-linux-*-nv-minimal-pdk.run
+  yes '' | bash $VF/out/store/drive-*-foundation-*-release-sdk.run
+  yes '' | bash $VF/out/store/drive-*-foundation-*-release-pdk.run
+  export DISPLAY=$D
+}
+
+function yocto-setup() {
+  setup-vars-tegra
+  yocto-directory-check || return 1
+  rm -rf $VR/out/install/pdk-all
+  mkdir -p $VR/out/install/pdk-all
+  cd $VR/out/install/pdk-all
+  tar -C $VR/out/install/pdk-all -zxf $VR/out/store_l/deferred_packaging/oss-src/oss-src.tgz
+  tar -C $VL/out/install/pdk-all -jxf $VR/out/install/pdk-all/drive-t186ref-linux_src/kernel/linux.tar.bz2
+  install-runs "${VR}/out/store_l" "${VR}/out/store_f"
+  cd $VR/yocto
+  rm pdk
+  ln -sf $VR/out/install/pdk-all pdk
+#  D=${DISPLAY}
+#  unset DISPLAY
+#  export _NV_INSTALL_LICENSE_BYPASS_="Destination Tegra Dominance"
+#  for run in \
+#   $VR/out/store_l/drive*linux*oss-minimal-pdk.run   \
+#   $VR/out/store_l/drive*linux*oss-minimal-sdk.run   \
+#   $VR/out/store_l/drive*linux*nv-minimal-sdk.run    \
+#   $VR/out/store_l/drive*linux*nv-minimal-pdk.run    \
+#   $VR/out/store_f/drive*foundation*release-sdk.run  \
+#   $VR/out/store_f/drive*foundation*release-pdk.run
+#  do
+#       echo "Installing ${run}"
+#       yes '' | bash ${run}
+#  done
+#  export DISPLAY=${D}
+#  cd $VR/yocto
+#  rm pdk
+#  ln -sf $VR/out/install/pdk-all pdk
+}
+
+function yocto-bb-shell() {
+  yocto-build-env
+  export SAVED_PS1="$PS1"
+  export PS1="BB ${SAVED_PS1}"
+  bash --noprofile
+  export PS1="${SAVED_PS1}"
+}
+
+function yocto-build-env() {
+  setup-vars-tegra
+  yocto-directory-check || return 1
+  cd $VR/yocto
+  export TEMPLATECONF=$(pwd)/layers/meta-drive5/conf
+  source oss/genivi-12/poky/oe-init-build-env
+}
+
+function yocto-build-target() {
+  yocto-build-env
+  bitbake $*
+}
+
+function yocto-build-ebp() {
+  yocto-build-target tegra-early-boot-rootfs
+}
+
+function yocto-build() {
+  yocto-build-target tegra-genivi-12-image
+}
+
+function yocto-build-all() {
+  # Hi. You are building with meta-drive5 layer.
+  #
+  # The buildable images are:
+  #  > quickboot
+  #  > tegra-early-boot-rootfs
+  #  > tegra-genivi-12-image
+  #  > tegra-initramfs-boot
+  for t in quickboot tegra-early-boot-rootfs tegra-genivi-12-image tegra-initramfs-boot; do
+     yocto-build-target "" ${t} 2>&1 | tee ${t}.log
+  done
+  wkup
+}
+
+function git-changes() {
+  local BRANCH=$1
+
+  setup-vars-tegra
+  repo forall -pc "git log --oneline HEAD...${BRANCH}"
+}
+
+function uuu() {
+  python3 /home/dimka/P/nvidia/lab/u2n/u2n/u2n.py $*
+}
+
+function ls-usb-serials() {
+  ls -l /sys/bus/usb-serial/devices/*/driver
+}
+
+function usb-path() {
+  echo /sys$(udevadm info -q path /dev/bus/usb/$(printf "%03d" $1)/$(printf "%03d" $2))
+}
+
+function initramfs_unpack() {
+  local IMG=$(realpath $1)
+  local IPATH=$2
+  local ZIP=$3
+
+  force_sudo
+  pushd $IPATH  2>&1 >/dev/null
+  cat $IMG | sudo cpio --extract --make-directories --format=newc --no-absolute-filenames --owner=0:0
+  popd 2>&1 >/dev/null
+}
+
+function initramfs_pack() {
+  local IMG=$(realpath $1)
+  local IPATH=$2
+  local ZIP=$3
+
+  force_sudo
+  pushd $IPATH  2>&1 >/dev/null
+  sudo find . -print0 | sudo cpio --null --create --format=newc >$IMG
+  popd 2>&1 >/dev/null
+}
+
+function initramfs_do() {
+  local R=$(mktemp -d)
+  local I=$1
+
+  force_sudo
+  shift
+  initramfs_unpack $I $R
+  pushd $R
+  eval "$*"
+  popd
+  initramfs_pack $I $R
+  sudo rm -rf $R
+}
+
+function initramfs_do_18() {
+  initramfs_do $VF/embedded/tools/boards/t186ref/yocto-tegra-initramfs-rootfs.img $*
+}
+
+function initramfs_do_19() {
+  initramfs_do $VF/embedded/tools-t19x/boards/t194ref/yocto-tegra-initramfs-rootfs.img $*
+}
+
+function pack_linux() {
+  pushd $VL/out/embedded-linux-t186ref-release 2>&1 >/dev/null
+  tar zcf linux.tgz nvidia/kernel/arch/arm64/boot/{z,}Image target_rootfs/lib/modules/
+  popd 2>&1 >/dev/null
+  ls -l $VL/out/embedded-linux-t186ref-release/linux.tgz
+}
+
+function notify() {
+	echo $'\e]9;$1\007'
+}
+
+function install-gcc-alternatives() {
+	local v1=$1
+	local v2=$2
+
+	force_sudo
+	sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${v1} 10
+	sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${v2} 20
+
+	sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${v1} 10
+	sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${v2} 20
+
+	sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc 30
+	sudo update-alternatives --set cc /usr/bin/gcc
+
+	sudo update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++ 30
+	sudo update-alternatives --set c++ /usr/bin/g++
+}
+
+function list-gcc-versions() {
+	update-alternatives --list gcc
+}
+
+function set-gcc-version() {
+	local BIN="/usr/bin"
+	[ -z "$1" ] && echo "Use set-cc-version VERSION" && return
+	[ ! -f ${BIN}/gcc-$1 -o ! -f ${BIN}/g++-$1 ] && echo "gcc or g++ version $1 do not exist" && list-gcc-versions && return
+	sudo update-alternatives --set gcc "${BIN}/gcc-$1"
+	sudo update-alternatives --set g++ "${BIN}/g++-$1"
+}
+
+function q() {
+	[ -z ${P4ROOT} ] && echo "P4ROOT should be set" && return
+	export QNX_V="qnx710-ga1-6.5.4.2"
+	export QNX_V_SHORT="qnx7"
+	export QNX_HOST=${P4ROOT}/sw/tools/embedded/qnx/${QNX_V}/host/linux/x86_64
+	export QNX_TARGET=${P4ROOT}/sw/tools/embedded/qnx/${QNX_V}/target/${QNX_V_SHORT}
+	export PATH=${PATH}:${QNX_HOST}/usr/bin
+	$*
+}
+
+function bind-linux() {
+        nv f -- 'source ${VR}/foundation-t23x/mk_blob.sh; bind_partitions -b p3710-10-s05 linux'
+}
+
+function bind-pct() {
+        local PCT=$1
+        shift
+        local NVARG=$1
+        shift
+        say "VR=${VR}\n"
+        nv f ${NVARG} -- "source ${VR}/foundation-t23x/mk_blob.sh; bind_partitions -b p3710-10-s05 ${PCT} $*"
+#        nv f ${ARG} -- 'source ${VR}/foundation-t23x/mk_blob.sh; bind_partitions -b p3710-10-a01-ct04 ${PCT} ${P}'
+}
+
+
+function bind-qnx-qnx() {
+        bind-pct qnx-qnx $*
+}
+
+function bind-single-qnx() {
+        bind-pct qnx $*
+}
+
+function create-images-colossus() {
+	local NVARG=$1
+        shift
+	export NV_BOOTBURN_SAFETY_ALL_OPTIONS=1
+	nv f ${NVARG} -- eenv $VR/embedded/tools-t19x/scripts/bootburn/create_bsp_images.py -b  p3710-10-s05 -B qspi -r 1 -g /y/exports/p3710-10-s05 -D --chain A $*
+#	nv f ${NVARG} -- eenv $VR/embedded/tools-t19x/scripts/bootburn/create_bsp_images.py -b  p3710-10-a01-ct04 -B qspi -r 1 -g /y/exports/p3710-10-s05 -D --chain A $*
+#	nv f ${ARG} -- eenv $VR/embedded/tools-t19x/scripts/bootburn/create_bsp_images.py -b  p3710-10-a01-ct04 -B qspi -r 1 -g /y/exports/p3710-10-s05 -D --chain A $*
+}
+
+function set-colossus() {
+	local colossus="$1"
+        local colossus_user="dpervushin"
+
+        if echo -n "$1" | grep --count --quiet "@"; then
+             colossus=$(echo -n "$1" | cut -d '@' -f 2)
+             colossus_user=$(echo -n "$1" | cut -d '@' -f 1)
+        fi
+	echo -n ${colossus} > ~/.nvidia-colossus-host
+	echo -n ${colossus_user} > ~/.nvidia-colossus-user
+}
+
+function get-colossus-cred() {
+        echo -n "$(get-colossus-user)@$(get-colossus-addr)"
+}
+
+function ssh-colossus() {
+	ssh -o "UserKnownHostsFile=/dev/null" -o "StrictHostKeyChecking=no"  $(get-colossus-cred) $*
+}
+
+function get-colossus-addr() {
+	cat ~/.nvidia-colossus-host
+}
+
+function get-colossus-user() {
+	cat ~/.nvidia-colossus-user
+}
+
+function get-colossus() {
+	say "Current COLOSSUS board credentials are $(get-colossus-cred)\n"
+}
+
+function rsync-colossus() {
+	local colossus=${1:-$(get-colossus-addr)}
+	local colossus_user=${2:-$(get-colossus-user)}
+	if [ -z "${colossus}" ] ; then
+		say "Remote host address should be set"
+		return
+	fi
+	rsync -avz -e "ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no -l ${colossus_user}" /y/exports/p3710-10-s05/ ${colossus}:y/p3710-10-s05/
+}
+
+function p3898-rflash() {
+        AURIX=/dev/ttyUSB2
+	ssh satyagi@10.41.21.223 bash << EOF
+                set -x
+		stty -F ${AURIX} raw 115200
+		echo "tegrarecovery x1 on" > ${AURIX}
+		sleep 1
+		echo "tegrareset x1" > ${AURIX}
+		sleep 5
+                python3 /mnt/home3/dimka/p3898/tools/flashtools/bootburn/flash_bsp_images.py -b p3898-a01 -P /mnt/home3/dimka/p3898/6* $*
+                sleep 5
+		echo "tegrarecovery x1 off" > ${AURIX}
+		sleep 1
+		echo "tegrareset x1" > ${AURIX}
+		sleep 5
+EOF
+}
+
+function configure-serial-port() {
+	local PORT=$1
+	local PORTDEF=$2
+
+	if [ -z ${PORT} ]; then
+		PORT="${PORTDEF}"
+	fi
+	if [[ $PORT != /dev/* ]]; then
+		if [[ $PORT != tty* ]]; then
+			PORT="tty${PORT}"
+		fi
+		PORT="/dev/${PORT}"
+	fi
+	stty -F ${PORT} speed 115200 2>&1 >/dev/null
+	echo -n ${PORT}
+}
+
+function gpush() {
+	local BRANCH=$1
+	git push origin HEAD:refs/for/${BRANCH}
+}
+
+function regenerate-ssh-keys() {
+	LOCALHOST="127.1"
+	KEYS="/tmp/ssh-keys.tar"
+
+	ssh-keygen -f "/home/dimka/.ssh/known_hosts" -R ${LOCALHOST}
+	for t in dsa ed25519 rsa; do
+		yes 'y' | ssh-keygen -q -f ~/.ssh/id_${t} -t ${t} -N '' -C "dpervushin-${t}"
+		echo -ne '\n'
+		ssh-copy-id -i ~/.ssh/id_${t}.pub -oStrictHostKeyChecking=no ${LOCALHOST}
+	done
+	tar cf ${KEYS} ~/.ssh
+#	for remote in $*; do
+#		scp ${KEYS} ${remote}:/tmp
+#	done
+#	rm ${KEYS}
+}
+
+function call-traceprinter() {
+	QNX_ROOT=${P4ROOT}/sw/tools/embedded/qnx/qnx710-ga1-6.5.4.1
+	TRACEPRINTER=${QNX_ROOT}/host/linux/x86_64/usr/bin/traceprinter
+	if [ ! -x ${TRACEPRINTER} ]; then
+		say "QNX_ROOT\t\{QNX_ROOT}\nP4ROOT\t\t${P4ROOT}\nTRACEPRINTER\t${TRACEPRINTER}\n"
+		say "Something does not exist...."
+		return
+	fi
+	${TRACEPRINTER} $*
+}
+
+function forall() {
+    find . -maxdepth 1 -type d  |  while read a; do if [ "$a" != "." ]; then "$1"; fi done
+}
+
+function all-gerrits() {
+	local operation=$1
+	cat | while read gerrit; do bash -c "${operation} ${gerrit}"; done
+}
+
+function list-functions() {
+        declare -F | cut -f 3 -d ' ' | grep -v "_.*" | sort | column -c 3
+}
+
+function cross_compile() {
+	nvl 'verbose; tmp kernel oldconfig' | /usr/bin/grep --only-matching 'CROSS_COMPILE=[^ ]*' | head -1
+}
+shopt -s expand_aliases
+
+VARIABLES="TARGET_O TARGET_CPUARCH TARGET_CROSS TARGET_ROOT TARGET_TFTP \
+	TARGET_CODE TARGET_TARGET_BIN TARGET_PATH TARGET_UBOOT_BIN	\
+	TARGET_CUSTOM_CP JOPT						\
+	GIT_AUTHOR_EMAIL GIT_AUTHOR_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_NAME"
+ROOT="/"
+FQDN_PRJ_VARS=""
+PRJ_VARS1="@project-vars"
+PRJ_VARS2="project-vars"
+DEFAULTS1="$HOME/defaults/$PRJ_VARS1"
+DEFAULTS2="$HOME/defaults/$PRJ_VARS2"
+SCRIPT=$(cd `dirname "${BASH_SOURCE[0]}"` && pwd)/$(basename "${BASH_SOURCE[0]}")
+PRJ_SILENT=${PRJ_SILENT:=0}
+
+_do_all "$VARIABLES" unset
+
+[ -x $DEFAULTS1 ] && . $DEFAULTS1
+[ -x $DEFAULTS2 ] && . $DEFAULTS2
+
+pushd . > /dev/null
+
+src[0]=""
+src_index=-1
+
+while [ "$(pwd)" != "$ROOT" ]; do
+	[ -e $PRJ_VARS1 ] && src[++src_index]="$(pwd)/$PRJ_VARS1"
+	[ -e $PRJ_VARS2 ] && src[++src_index]="$(pwd)/$PRJ_VARS2"
+	cd ..
+done
+popd > /dev/null 2>&1
+
+while [ $src_index -ge 0 ]; do
+	a=${src[src_index--]}
+	[ $PRJ_SILENT -eq 0 ] && say "### @@ $a\n"
+	pushd $(dirname $a) > /dev/null
+	source ./"$(basename $a)"
+	popd > /dev/null
+done
+
+TARGET_TARGET_BIN="$TARGET_TARGET-${TARGET_CODE}${TARGET_CODE2}"
+TARGET_PATH="arch/$TARGET_CPUARCH/boot"
+TARGET_UBOOT_BIN="uboot-$TARGET_CODE-dimka.bin"
+TARGET_O="${TARGET_O_PREFIX}/o-$TARGET_CODE"
+TARGET_U="${TARGET_O_PREFIX}/u-$TARGET_CODE"
+if [ ! -z "$TARGET_CP" ]; then
+	TARGET_CUSTOM_CP=${TARGET_CP}
+fi
+
+COLOR_Reset="$(tput sgr0)"
+COLOR_Black="$(tput setaf 0)"
+COLOR_Red="$(tput setaf 1)"
+COLOR_Green="$(tput setaf 2)"
+COLOR_Yellow="$(tput setaf 3)"
+COLOR_Blue="$(tput setaf 4)"
+COLOR_Magenta="$(tput setaf 5)"
+COLOR_Cyan="$(tput setaf 6)"
+COLOR_White="$(tput setaf 7)"
+
+# start with exporting variables...
+_do_all "$VARIABLES" export
+late_init
+# the 2nd chance to export variables
+_do_all "$VARIABLES" export
+
+# aliases setup
+alias ntg7gr='cd ~/projects/nvidia/v5/NTG7/R/tools/golden-regs-rel/1.7/gr_host_tools/tgv_tool'
+alias asetup='export NV_BUILD_KERNEL_ACK_VERSION=6.1; export NV_BUILD_KERNEL_ACK=true; source build/envsetup.sh && choosecombo 1 generic_aaos 3'
+alias diff='/usr/bin/diff -uNr -X ~/defaults/dontdiff'
+alias hd='od -Ax -tx1z -v'
+alias please='sudo'
+alias ls='ls -CF '
+alias wkup="echo $'\a'"
+alias rootfs="yes | image delete_rootfs; image create_rootfs"
+alias gca!="git commit --amend --no-edit"
+
+function md() {
+	mkdir "$1" && cd "$1"
+}
+
+# Local-only commands retained during consolidation.
+function zap() {
+	local ebk="%ebk"
+	pushd "$VL/out/embedded-linux-t186ref-release/nvidia/kernel_early_boot/" || return
+	mv kernel "$ebk"
+	mv "$ebk"/* .
+	rm -rf "$ebk"
+	popd
+}
+
+function qnx-suspend() {
+	local port
+	port=$(configure-serial-port "$1" "ttyUSB2") || return
+	echo 'echo 1 > /dev/nvsyseventclient/suspend' > "$port"
+}
+
+function mouse-driver() {
+	force_sudo
+	pushd ~/drivers/* || return
+	set-gcc-version 9
+	sudo make INTERFACE=all install && sudo /sbin/reboot
+	popd
+}
+
+source ~/bin/nvgerrit-cli-aliases
+
+complete -cf sudo
+
+ME_SHORT=$(hostname -s)
+ME=$(hostname -f 2>/dev/null || hostname)
+case ${ME_SHORT} in
+ dpervushin-dt) COLOR='${COLOR_Yellow}' ;;
+ mcdimka)       COLOR='${COLOR_Magenta}' ;;
+ tower)		COLOR='${COLOR_Cyan}' ;;
+ v)             COLOR='${COLOR_Blue}' ;;
+ *)             COLOR='${COLOR_White}' ;;
+esac
+
+# do customization depending on host name
+for CUSTOMIZATION_DIR in "${HOME}/hosts" "${HOME}/etc/hosts/" "${HOME}/etc" "/etc/hosts"; do
+   CUSTOMIZATION_FOUND=""
+   [ -z "${CUSTOMIZATION_FOUND}" ] && [ -f "${CUSTOMIZATION_DIR}/${ME}" ] && CUSTOMIZATION_FOUND=${CUSTOMIZATION_DIR}/${ME}
+   [ -z "${CUSTOMIZATION_FOUND}" ] && [ -f "${CUSTOMIZATION_DIR}/${ME}.conf" ] && CUSTOMIZATION_FOUND=${CUSTOMIZATION_DIR}/${ME}.conf
+   [ -z "${CUSTOMIZATION_FOUND}" ] && [ -f "${CUSTOMIZATION_DIR}/${ME_SHORT}" ] && CUSTOMIZATION_FOUND=${CUSTOMIZATION_DIR}/${ME_SHORT}
+   [ -z "${CUSTOMIZATION_FOUND}" ] && [ -f "${CUSTOMIZATION_DIR}/${ME_SHORT}.conf" ] && CUSTOMIZATION_FOUND=${CUSTOMIZATION_DIR}/${ME_SHORT}.conf
+   if [ -n "${CUSTOMIZATION_FOUND}" ]; then
+	say "### Configuring using ${CUSTOMIZATION_FOUND}\n"
+	source ${CUSTOMIZATION_FOUND}
+        break
+   fi
+done
+
+export HISTTIMEFORMAT="%d/%m/%y %T "
+
+export PROMPT_COMMAND="ps1_helper ${COLOR}"
+if [ "x$1" == "x" ]; then
+   cmd="setup"
+   say "### calling setup\n"
+else
+   cmd=$1
+fi
+
 shift
 say "### -> \"$cmd\" $*\n"
 fix_arch

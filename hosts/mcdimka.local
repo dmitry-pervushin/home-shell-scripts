@@ -1,2 +1,12 @@
 alias pesg="ssh -l pesg-ae pesg-ae-lab"
+export HASS_SERVER=192.168.77.9:8123
 
+[ -r "$HOME/hosts/load-private" ] && . "$HOME/hosts/load-private"
+
+ha() {
+	if [ -z "${HASS_TOKEN:-}" ]; then
+		echo "HASS_TOKEN is not configured in ~/hosts/private/$(hostname -s 2>/dev/null || hostname)" >&2
+		return 1
+	fi
+	hass-cli --server "http://${HASS_SERVER}" --token "$HASS_TOKEN" "$@"
+}

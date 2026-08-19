@@ -1,0 +1,1 @@
+git apply --check $1 && git am --signoff $1

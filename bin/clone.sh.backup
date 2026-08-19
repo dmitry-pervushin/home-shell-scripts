@@ -1,0 +1,100 @@
+SANDBOX=`pwd`/sandbox
+SANDBOX_SHADOW=`pwd`/I
+O=`pwd`/o
+CROSS_COMPILE_PREFIX=${HOME}/projects/nvidia/v4/tot/linux/prebuilts/gcc/linux-x86/aarch64/gcc-4.9.2-glibc-2.21/usr/bin/aarch64-gnu-linux/aarch64-gnu-linux-
+GIT_SERVER="ssh://git-master:29418"
+BRANCH="rel-25"
+REPOS="linux-3.18:kernel-3.18 linux-display:display linux-3.10-t18x:t18x  linux-nvmap-t18x:nvmap-t18x linux-nvmap:nvmap linux-nvhost:nvhost linux-nvgpu:nvgpu linux-nvhost-t18x:nvhost-t18x linux-nvgpu-t18x:nvgpu-t18x"
+MAIN=kernel-3.18
+MK="make ARCH=arm64                     \
+                -f Makefile             \
+                LOCALVERSION=-tegra     \
+                O=${O}/kernel           \
+                V=1                     \
+                CROSS_COMPILE=${CROSS_COMPILE_PREFIX}"
+
+function cherry-pick() {
+        ssh -p 29418 git-master gerrit query $1 --current-patch-set > /tmp/query
+        REF=`cat /tmp/query | /bin/grep ref: | cut -f 2 -d ':'`
+        PRJ=`cat /tmp/query | /bin/grep project: | cut -f 2 -d ':'`
+        for repo_desc in $REPOS; do
+                repo=`echo $repo_desc | cut -f 1 -d ':'`
+                dir=`echo $repo_desc | cut -f 2 -d ':'`
+                if [ $repo == $PRJ ]; then
+                        git -C $2/${dir} fetch ${GIT_SERVER}/${repo} $REF
+                        git -C $2/${dir} cherry-pick FETCH_HEAD
+                        break
+                fi
+        done
+}
+
+function clone() {
+        mkdir -p $1
+        for repo_desc in $REPOS; do
+                repo=`echo $repo_desc | cut -f 1 -d ':'`
+                dir=`echo $repo_desc | cut -f 2 -d ':'`
+                echo "Cloning ${repo} => ${SANDBOX}/${dir}"
+                if [ -d ${SANDBOX_SHADOW}/${dir} ]; then
+                        echo "...found a shadow copy at ${SANDBOX_SHADOW}"
+                        cp -r ${SANDBOX_SHADOW}/${dir} $1/${dir}
+                else
+                        git clone ${GIT_SERVER}/${repo} $1/${dir}
+                        git -C $1/${dir} checkout -b ${BRANCH} --track origin/${BRANCH}
+                fi
+        done
+}
+
+function config() {
+        rm -rf ${O}
+        mkdir -p ${O}/kernel
+        DEFCONFIG=tegra_t186ref_gnu_linux_defconfig
+        $MK $DEFCONFIG $*
+}
+
+function vmlinux() {
+        $MK vmlinux -j32 $*
+}
+
+
+function md5() {
+        A=`md5sum $1 | cut -f 1 -d ' '`
+        echo $A
+}
+
+function collapse() {
+        #... this must be in sync with scripts/Makefile.tegra
+#       DIRS="t18x nvgpu nvgpu-t18x nvhost nvhost-t18x nvmap nvmap-t18x display"
+	mkdir -p $1
+        cd $1; COLLAPSE=`/bin/pwd`; cd -
+        cd $2; D=`/bin/pwd`; cd -
+        DIRS=`ls $2 | /bin/grep -v $MAIN`
+        T=/tmp/XXXXXXXXXXXX
+	for a in $MAIN $DIRS; do
+		echo "[D] $a"
+		rm -rf $T
+		cp -a $D/$a $T
+		pushd $T
+		find . -type d -name '[^\.]*' -exec mkdir -p $COLLAPSE/{} \;
+		find . -type f -name '[^\.]*' | while read f; do
+			if [ -f $COLLAPSE/$f ]; then
+				if [ `md5 $COLLAPSE/$f` == `md5 $f` ]; then
+					echo "[=] $a $f"
+				else
+					echo "[!] $a $f"
+				fi
+				continue
+			fi
+			if [ -f `dirname $COLLAPSE/$f` ]; then
+				continue
+			fi
+			cp $f $COLLAPSE/$f
+			done
+		popd 2>&1 >/dev/null
+	done
+}
+
+clone $SANDBOX/def
+for gerrit in 1174846 1174847 1174848 1174849 1174850 1174851 1174852 1174853 1174854 1174855 1174856 1174857 1173938; do
+	cherry-pick $gerrit $SANDBOX/def
+done
+collapse $SANDBOX/collapsed

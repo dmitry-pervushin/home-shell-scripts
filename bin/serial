@@ -1,0 +1,25 @@
+#!/bin/bash
+PORT=$1
+if [[ $PORT != /dev/* ]]; then
+	if [[ $PORT != tty* ]]; then
+		PORT="tty${PORT}"
+	fi
+	PORT="/dev/${PORT}"
+fi
+
+BAUD=115200
+if [ ! -z "$2" ]; then
+	BAUD=$2
+fi
+
+pids=`lsof $PORT | tail -n1 | cut -f 2 -d ' '`
+for a in $pids; do
+	sudo kill $a
+	sleep 3
+done
+
+LOCK=/var/lock/LCK..`echo ${PORT} | cut -b 6-`
+echo $LOCK
+sudo rm $LOCK
+
+picocom --baud $BAUD --noreset $PORT

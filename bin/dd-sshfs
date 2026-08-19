@@ -1,0 +1,1 @@
+sshfs dimka@n:/ /Volumes/DD -o reconnect -o volname=DD-ssh

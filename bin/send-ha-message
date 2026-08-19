@@ -1,0 +1,2 @@
+#!/bin/sh
+mosquitto_pub -h 192.168.77.6 -t "/homeassistant/send_message" -m "{\"targets\": \"app-dimka\", \"message\": \"$*\"}"

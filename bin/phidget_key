@@ -1,0 +1,12 @@
+for a in $*; do
+	if echo $a | grep _; then
+		a1=`echo $a | cut -f 1 -d _`
+		a2=`echo $a | cut -f 2 -d _`
+		echo "Action: $a1, $a2"
+		sudo python ~/bin/phidget-key.py $a1 $a2
+		sleep 5
+	else
+		echo "Sleep $a"
+		sleep $a
+	fi
+done

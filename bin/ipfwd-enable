@@ -1,0 +1,5 @@
+#eth0 - internet  eno1
+#eth1 - network   enp6s0
+sudo iptables -t nat -A POSTROUTING -o eno1 -j MASQUERADE
+sudo iptables -A FORWARD -i enp6s0 -j ACCEPT
+echo 1 > /proc/sys/net/ipv4/ip_forward

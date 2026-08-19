@@ -1,0 +1,2 @@
+#!/bin/sh
+ssh n bash -xc \'$*\'

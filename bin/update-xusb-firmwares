@@ -1,0 +1,2 @@
+cp -v ${VR}/kernel-firmware/xusb_fw_load/t19x/xusb_sil_rel_fw ./lib/firmware/tegra19x_xusb_firmware || exit 0
+cp -v ${VR}/kernel-firmware/xusb_fw_load/t18x/xusb_sil_rel_fw ./lib/firmware/tegra18x_xusb_firmware || exit 0

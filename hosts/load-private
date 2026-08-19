@@ -1,0 +1,6 @@
+# Load shared secrets first, then optional host-specific overrides.
+private_hostname=$(hostname -s 2>/dev/null || hostname)
+for private_config in "$HOME/hosts/private/common" "$HOME/hosts/private/$private_hostname"; do
+	[ -r "$private_config" ] && . "$private_config"
+done
+unset private_config private_hostname

@@ -1,9 +1,15 @@
-# defaults
-TARGET_ARCH=""
-TARGET_CROSS=""
-TARGET_ROOT=""
-TARGET_TARGET="zImage"
-TARGET_TFTP="/tftpboot/"
-TARGET_CODE="unknown"
-TARGET_O_PREFIX=".."
-
+# Safe defaults; project-local files override these values.
+TARGET_MAKE=make
+TARGET_TARGET=zImage
+TARGET_O=
+TARGET_O_PREFIX=..
+TARGET_ARCH=
+TARGET_CPUARCH=
+TARGET_CROSS=
+TARGET_ROOT=/nonexistent
+TARGET_TFTP=/nonexistent
+TARGET_CODE=
+TARGET_TARGET_BIN=
+TARGET_PATH=
+TARGET_UBOOT_BIN=
+TARGET_CUSTOM_CP=cp

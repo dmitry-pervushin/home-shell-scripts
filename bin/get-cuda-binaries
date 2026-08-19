@@ -1,0 +1,16 @@
+#!/bin/sh
+
+[ -r "$HOME/hosts/load-private" ] && . "$HOME/hosts/load-private"
+CUDA_MAJOR=10
+CUDA_MINOR=2
+CUDA_MICRO=168
+USERNAME="${NVIDIA_CUDA_USER:?NVIDIA_CUDA_USER is not configured}"
+PASSWORD="${NVIDIA_CUDA_PASSWORD:?NVIDIA_CUDA_PASSWORD is not configured}"
+CUDA_ROOT="/netapp39/unixbuilds/release/cuda/software/r${CUDA_MAJOR}.${CUDA_MINOR}/${CUDA_MAJOR}.${CUDA_MINOR}.${CUDA_MICRO}"
+for F in "aarch64/cuda-linux-aarch64-rel-${CUDA_MAJOR}.${CUDA_MINOR}.${CUDA_MICRO}-*.tar.gz" \
+         "CUDA_Samples/cuda-samples-linux-${CUDA_MAJOR}.${CUDA_MINOR}.${CUDA_MICRO}-*.tar.gz" \
+         "Linux_x86_64/cuda-linux64-rel-${CUDA_MAJOR}.${CUDA_MINOR}.${CUDA_MICRO}-*.tar.gz"
+do
+ lftp -e "set ssl:verify-certificate no; mget -c -P 10 ${CUDA_ROOT}/${F}; quit" \
+ ${USERNAME}:${PASSWORD}@hqnvhwy02.nvidia.com
+done

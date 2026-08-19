@@ -1,0 +1,11 @@
+#!/bin/sh
+sudo -v
+sudo modprobe ubi
+sudo modprobe nandsim id_bytes=0x2C,0xdc,0x90,0x95,0x54 \
+                      parts=0x17c,0x13,6,0x258,0xc13 \
+                      bus_width=8
+
+sudo flash_eraseall /dev/mtd3
+sudo ubiformat /dev/mtd3 -O 2048 -f ubi1_evfs.img
+sudo ubiattach -m 3 -O 2048
+sudo mount -t ubifs ubi0:ev_fs /mnt

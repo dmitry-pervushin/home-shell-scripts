@@ -1,0 +1,3 @@
+C=$1
+shift
+/usr/bin/env QNX_HOST=/home/dimka/projects/nvidia/p4/sw/tools/embedded/qnx/qnx710-ga1-6.5.4.2/host/linux/x86_64 QNX_TARGET=/home/dimka/projects/nvidia/p4/sw/tools/embedded/qnx/qnx710-ga1-6.5.4.2/target/qnx7 PATH=/home/dimka/projects/nvidia/p4/sw/tools/embedded/qnx/qnx710-ga1-6.5.4.2/host/linux/x86_64/usr/bin:/home/dimka/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/usr/lib/jvm/java-17-oracle/bin:/usr/lib/jvm/java-17-oracle/db/bin:/sbin:/usr/sbin:/usr/java/jdk1.5.0_20/bin:/home/dimka/P/nvidia/mobile-nvs:/home/dimka/.poetry/bin /home/dimka/projects/nvidia/p4/sw/tools/embedded/qnx/qnx710-ga1-6.5.4.2/host/linux/x86_64/usr/bin/${C} $*

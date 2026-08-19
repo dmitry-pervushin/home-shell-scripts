@@ -1,0 +1,148 @@
+zinit_vars() {
+  ZTARGET=${ZTARGET:-"orin"}
+  ZINT=${ZINT:-"Y"}
+  ZPCT=${ZPCT:-"qnx"}
+  ZUSER=${ZUSER:-"dpervushin"}
+  ZSAFETYDEBUG=${ZSAFETYDEBUG:-"N"}
+  ZGENERIC=${ZGENERIC:-"Y"}
+
+  if [ ${ZTARGET} == "xavier" ]; then
+   Z_BOARD=e3550b03-t194a
+   Z_ARCH=t19x
+   Z_AURIX=/dev/ttyUSB3
+   Z_CONSOLE=/dev/ttyUSB2
+   Z_REVISION=2
+   Z_IMG_OPT="-p xavier"
+  fi
+
+  if [ ${ZTARGET} == "orin" ]; then
+   Z_BOARD=p3710-10-a01
+   Z_ARCH=t23x
+   Z_AURIX=/dev/ttyACM1
+   Z_CONSOLE=/dev/ttyACM0
+   Z_REVISION=1
+   Z_CBSP_OPT=""
+   Z_IMG_OPT=""
+  fi
+
+  if [ ${ZINT} == "Y" ]; then
+   Z_CBSP_OPT="-M"
+  fi
+
+  Z_PCT=${ZPCT}
+  Z_IMAGES=/tmp/zzz/images
+  Z_COLOSSUS=$(cat ~/.zcolossus | head -1)
+  Z_C=${ZUSER}@${Z_COLOSSUS}
+  Z_HOME=/dimka
+  Z_FND="$(echo -n ${Z_ARCH} | cut -b 1-3)*"
+
+  if [ ${ZSAFETYDEBUG} == "Y" ]; then
+   Z_PCT_VARIANT="-p prod_debug_extra"
+   if [ ${ZGENERIC} == "Y" ]; then
+    NVQ="nvsdq2"
+    NVF="nvsdf2"
+   else
+    NVQ="nvsdq"
+    NVF="nvsdf"
+   fi
+  else
+   Z_PCT_VARIANT=""
+   if [ ${ZGENERIC} == "Y" ]; then
+    NVQ="nvq2"
+    NVF="nvf2"
+   else
+    NVQ="nvq"
+    NVF="nvf"
+   fi
+  fi
+
+  export Z_BOARD Z_ARCH Z_PCT Z_IMAGES Z_COLOSSUS Z_C Z_AURIX Z_CONSOLE Z_HOME Z_REVISION Z_CBSP_OPT NVQ NVF
+  env | /bin/grep "^Z"
+  echo "NVF=${NVF}"
+  echo "NVQ=${NVQ}"
+}
+
+
+
+function zbind() {
+   source ${VR}/foundation-$1/mk_blob.sh
+   shift
+   bind_partitions -b $*
+}
+
+function znew() {
+  echo -n "$1" > ~/.zcolossus
+  ssh-keygen -f "/home/dimka/.ssh/known_hosts" -R "$1"
+  [ "$2" == "" ] && zinit_vars
+  zsetup
+}
+
+function zsetup() {
+  ssh-copy-id ${Z_C}
+  ssh ${Z_C} "sudo apt-get update; sudo apt-get install picocom; sudo chmod 777 ${Z_AURIX} ${Z_CONSOLE}; ls -l ${Z_AURIX} ${Z_CONSOLE}; sudo mkdir -p ${Z_HOME}; sudo chmod 777 ${Z_HOME}"
+}
+
+function zcbsp() {
+  eenv $VR/embedded/tools-t19x/scripts/t194_bootburn/create_bsp_images.sh ${Z_CBSP_OPT} -b ${Z_BOARD} -B qspi -r ${Z_REVISION} -g ${Z_IMAGES}
+}
+
+function zsync() {
+  rsync -avz -e ssh ${Z_IMAGES}/* ${Z_C}:${Z_HOME}
+}
+
+function zrootfs() {
+  image create_rootfs ${Z_IMG_OPT} || image update_rootfs ${Z_IMG_OPT}
+  return 0
+}
+
+function zqnx() {
+  source ~/bin/prj setup
+  mkdir -p ${Z_IMAGES}
+  setup-vars-tegra
+
+  ${NVQ} tmp && \
+  ${NVQ} tmp systemimage && \
+  ${NVQ} zrootfs && \
+  ${NVF} zbind ${Z_FND} ${Z_BOARD} ${Z_PCT} "${Z_PCT_VARIANT}" && \
+  ${NVF} zcbsp && \
+  zsync && \
+  true
+}
+
+function _zrecovery() {
+   echo -n "set -x; stty -F ${Z_AURIX} 115200; echo \"tegrarecovery x1 on\" >${Z_AURIX}; sleep 1; echo \"tegrareset x1\" >${Z_AURIX}; sleep 1"
+}
+
+function _zboot() {
+   echo -n "set -x; stty -F ${Z_AURIX} 115200; echo \"tegrarecovery x1 off\" >${Z_AURIX}; sleep 1; echo \"tegrareset x1\" >${Z_AURIX}; sleep 1"
+}
+
+function _zflash() {
+  echo -n "set -x; ${Z_HOME}/tools/flashtools/bootburn/flash_bsp_images.py -b ${Z_BOARD} -P ${Z_HOME}/6* $*"
+}
+
+function zexec() {
+  ssh ${Z_C} $*
+}
+
+function zssh() {
+  zexec ""
+}
+
+function zflash() {
+  zexec "$(_zrecovery); $(_zflash $*)"
+}
+
+function zboot() {
+  zexec "$(_zboot)"
+}
+
+function zzzz() {
+  zexec "set -x; stty -F ${Z_CONSOLE} 115200; echo \"echo 1 >/dev/nvsyseventclient/trigger_sys_suspend\" >${Z_CONSOLE}"
+}
+i
+
+zinit_vars
+if [ "$1" != "" ]; then
+    znew $1 "x"
+fi
