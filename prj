@@ -513,7 +513,7 @@ function ps1() {
                 #     NTG6 or NTG7
                 #     MAIN, DEV-MAIN or MBITION
                 #
-		if echo -n "${pwd_item^^}" | /usr/bin/grep --quiet -E '^(V.?|R[0-9]+|REL[0-9]+|REL-.*|NTG[6-7]|MAIN|DEV-MAIN|MBITION)$'; then
+		if printf '%s' "$pwd_item" | tr '[:lower:]' '[:upper:]' | /usr/bin/grep --quiet -E '^(V.?|R[0-9]+|REL[0-9]+|REL-.*|NTG[6-7]|MAIN|DEV-MAIN|MBITION)$'; then
 			color="${COLOR_Cyan}"
 		fi
 		echo -n "\[${color}\]"
