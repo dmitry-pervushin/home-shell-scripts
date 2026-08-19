@@ -50,13 +50,13 @@ function M() {
 		ARCH=$TARGET_CPUARCH 		\
 		CROSS_COMPILE=$TARGET_CROSS 	\
 		INSTALL_MOD_PATH=$TARGET_ROOT 	\
-		$* 				\
+		"$@" 				\
 		$JOPT
 	set +x
 }
 
 function MM() {
-	PRJ_SILENT=1 M $TARGET_TARGET $*
+	PRJ_SILENT=1 M "$TARGET_TARGET" "$@"
 }
 
 function m() {
@@ -68,52 +68,52 @@ function Mm() {
 }
 
 function Mz() {
-	PRJ_SILENT=1 M zImage $*
+	PRJ_SILENT=1 M zImage "$@"
 }
 
 function Mu() {
-	PRJ_SILENT=1 M uImage $*
+	PRJ_SILENT=1 M uImage "$@"
 }
 
 function do_copy_using1() {
-	FS=$(_filesize $TARGET_O/$2)
-	[ $PRJ_SILENT -eq 0 ] && echo "# ($TARGET_O/$2) =>"
-	[ $PRJ_SILENT -eq 0 ] && echo "# => ($TARGET_TFTP) $3 size $FS"
-	$1 $TARGET_O/$2 $TARGET_TFTP/$3
+	local copy_command="$1"
+	local source="$TARGET_O/$2"
+	local destination="$TARGET_TFTP/$3"
+	local FS
+	FS=$(_filesize "$source")
+	[ "$PRJ_SILENT" -eq 0 ] && echo "# ($source) =>"
+	[ "$PRJ_SILENT" -eq 0 ] && echo "# => ($TARGET_TFTP) $3 size $FS"
+	"$copy_command" "$source" "$destination"
 }
 
 function do_copy_using() {
+	local CP_CMD
 	if [ $# -ge 1 ]; then
-		CP_CMD=$1
+		CP_CMD="$1"
 		shift
 	fi
 
 	if [ $# -ge 2 ]; then
 		while [ $# -ge 2 ]; do
-			do_copy_using1 $CP_CMD "$1" "$2"
+			do_copy_using1 "$CP_CMD" "$1" "$2"
 			shift
 			shift
 		done
 	else
-		do_copy_using1 $CP_CMD "$TARGET_PATH/$TARGET_TARGET" "$TARGET_TARGET_BIN"
+		do_copy_using1 "$CP_CMD" "$TARGET_PATH/$TARGET_TARGET" "$TARGET_TARGET_BIN"
 	fi
 }
 
 function C() {
-	if [ ! -z "$TARGET_CUSTOM_CP" ]; then
-		echo "# Exec '$TARGET_CUSTOM_CP'"
-		echo "$TARGET_CUSTOM_CP" | bash
-	else
-		do_copy_using scp $*
-	fi
+	do_copy_using "$TARGET_CUSTOM_CP" "$@"
 }
 
 function Cc() {
-	do_copy_using cp $*
+	do_copy_using cp "$@"
 }
 
 function U() {
-	make CROSS_COMPILE=$TARGET_CROSS O=$TARGET_U ARCH=${TARGET_CPUARCH} $*
+	make CROSS_COMPILE="$TARGET_CROSS" O="$TARGET_U" ARCH="$TARGET_CPUARCH" "$@"
 }
 
 function u() {
@@ -123,7 +123,7 @@ function u() {
 }
 
 function MC() {
-	PRJ_SILENT=1 MM $* && PRJ_SILENT=1 C
+	PRJ_SILENT=1 MM "$@" && PRJ_SILENT=1 C
 }
 
 function MCL() {
@@ -144,11 +144,11 @@ function cf() {
 }
 
 function L() {
-	~/bin/lds $TARGET_TARGET_BIN $*
+	~/bin/lds "$TARGET_TARGET_BIN" "$@"
 }
 
 function v() {
-	args=$(echo -n $* | sed 's/:/ +/' | sed 's/://g')
+	args=$(printf '%s' "$*" | sed 's/:/ +/' | sed 's/://g')
 #	echo "VI $args"
 	vim --cmd "set tags=${TARGET_O}/tags,${TARGET_U}/ctags" $args
 }
@@ -172,7 +172,7 @@ function build-v2() {
 	export TARGET_PLATFORM=$EMBEDDED_TARGET_PLATFORM
 	export ARMLMD_LICENSE_FILE=1924@sc-lic-18:1924@sac-lic-19
 
-	make -C core/mobile_linux/make $*
+	make -C core/mobile_linux/make "$@"
 }
 
 function flash-v2() {
@@ -182,7 +182,7 @@ function flash-v2() {
 }
 
 function with() {
-	python3 /home/dimka/projects/nvidia/lab/with/main.py $* | bash
+	python3 /home/dimka/projects/nvidia/lab/with/main.py "$@" | bash
 #	python /opt/shoelace/with.py $*
 }
 
@@ -531,9 +531,7 @@ function ps1_helper() {
 }
 
 function say() {
-	echo -ne "\033[1;35m"
-	echo -ne $*
-	echo -ne "\033[0m"
+	printf '%s%b%s' "${COLOR_Magenta:-}" "$*" "${COLOR_Reset:-}"
 }
 
 function late_init() {
@@ -545,9 +543,9 @@ function _filesize() {
 }
 
 function _do() {
-	VAR=$1
+	local VAR=$1
 	shift
-	$* $VAR
+	"$@" "$VAR"
 }
 
 function _do_all() {
@@ -666,7 +664,7 @@ function parent-has() {
 	local PWD_SOURCE="$(pwd)"
 	pushd "${PWD_SOURCE}" > /dev/null
 	while [ "$(pwd)" != "/" ]; do
-		for candidate in $*; do
+		for candidate in "$@"; do
 			if [ ! -e $candidate ]; then
 				cd ..
 				continue 2 # continue the outer loop
@@ -832,7 +830,7 @@ function yocto-build-env() {
 
 function yocto-build-target() {
   yocto-build-env
-  bitbake $*
+  bitbake "$@"
 }
 
 function yocto-build-ebp() {
@@ -865,7 +863,7 @@ function git-changes() {
 }
 
 function uuu() {
-  python3 /home/dimka/P/nvidia/lab/u2n/u2n/u2n.py $*
+  python3 /home/dimka/P/nvidia/lab/u2n/u2n/u2n.py "$@"
 }
 
 function ls-usb-serials() {
@@ -914,11 +912,11 @@ function initramfs_do() {
 }
 
 function initramfs_do_18() {
-  initramfs_do $VF/embedded/tools/boards/t186ref/yocto-tegra-initramfs-rootfs.img $*
+  initramfs_do "$VF/embedded/tools/boards/t186ref/yocto-tegra-initramfs-rootfs.img" "$@"
 }
 
 function initramfs_do_19() {
-  initramfs_do $VF/embedded/tools-t19x/boards/t194ref/yocto-tegra-initramfs-rootfs.img $*
+  initramfs_do "$VF/embedded/tools-t19x/boards/t194ref/yocto-tegra-initramfs-rootfs.img" "$@"
 }
 
 function pack_linux() {
@@ -969,7 +967,7 @@ function q() {
 	export QNX_HOST=${P4ROOT}/sw/tools/embedded/qnx/${QNX_V}/host/linux/x86_64
 	export QNX_TARGET=${P4ROOT}/sw/tools/embedded/qnx/${QNX_V}/target/${QNX_V_SHORT}
 	export PATH=${PATH}:${QNX_HOST}/usr/bin
-	$*
+	"$@"
 }
 
 function bind-linux() {
@@ -988,18 +986,18 @@ function bind-pct() {
 
 
 function bind-qnx-qnx() {
-        bind-pct qnx-qnx $*
+        bind-pct qnx-qnx "$@"
 }
 
 function bind-single-qnx() {
-        bind-pct qnx $*
+        bind-pct qnx "$@"
 }
 
 function create-images-colossus() {
 	local NVARG=$1
         shift
 	export NV_BOOTBURN_SAFETY_ALL_OPTIONS=1
-	nv f ${NVARG} -- eenv $VR/embedded/tools-t19x/scripts/bootburn/create_bsp_images.py -b  p3710-10-s05 -B qspi -r 1 -g /y/exports/p3710-10-s05 -D --chain A $*
+	nv f "$NVARG" -- eenv "$VR/embedded/tools-t19x/scripts/bootburn/create_bsp_images.py" -b p3710-10-s05 -B qspi -r 1 -g /y/exports/p3710-10-s05 -D --chain A "$@"
 #	nv f ${NVARG} -- eenv $VR/embedded/tools-t19x/scripts/bootburn/create_bsp_images.py -b  p3710-10-a01-ct04 -B qspi -r 1 -g /y/exports/p3710-10-s05 -D --chain A $*
 #	nv f ${ARG} -- eenv $VR/embedded/tools-t19x/scripts/bootburn/create_bsp_images.py -b  p3710-10-a01-ct04 -B qspi -r 1 -g /y/exports/p3710-10-s05 -D --chain A $*
 }
@@ -1021,7 +1019,7 @@ function get-colossus-cred() {
 }
 
 function ssh-colossus() {
-	ssh -o "UserKnownHostsFile=/dev/null" -o "StrictHostKeyChecking=no"  $(get-colossus-cred) $*
+	ssh -o "UserKnownHostsFile=/dev/null" -o "StrictHostKeyChecking=no" "$(get-colossus-cred)" "$@"
 }
 
 function get-colossus-addr() {
@@ -1111,7 +1109,7 @@ function call-traceprinter() {
 		say "Something does not exist...."
 		return
 	fi
-	${TRACEPRINTER} $*
+	"${TRACEPRINTER}" "$@"
 }
 
 function forall() {
@@ -1132,9 +1130,10 @@ function cross_compile() {
 }
 shopt -s expand_aliases
 
-VARIABLES="TARGET_O TARGET_CPUARCH TARGET_CROSS TARGET_ROOT TARGET_TFTP \
-	TARGET_CODE TARGET_TARGET_BIN TARGET_PATH TARGET_UBOOT_BIN	\
-	TARGET_CUSTOM_CP JOPT						\
+VARIABLES="TARGET_O TARGET_U TARGET_O_PREFIX TARGET_CPUARCH TARGET_CROSS \
+	TARGET_ROOT TARGET_TFTP TARGET_CODE TARGET_CODE2 TARGET_TARGET \
+	TARGET_TARGET_BIN TARGET_PATH TARGET_UBOOT_BIN TARGET_MAKE TARGET_CP \
+	TARGET_CUSTOM_CP JOPT \
 	GIT_AUTHOR_EMAIL GIT_AUTHOR_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_NAME"
 ROOT="/"
 FQDN_PRJ_VARS=""
@@ -1147,8 +1146,8 @@ PRJ_SILENT=${PRJ_SILENT:=0}
 
 _do_all "$VARIABLES" unset
 
-[ -x $DEFAULTS1 ] && . $DEFAULTS1
-[ -x $DEFAULTS2 ] && . $DEFAULTS2
+[ -r "$DEFAULTS1" ] && . "$DEFAULTS1"
+[ -r "$DEFAULTS2" ] && . "$DEFAULTS2"
 
 pushd . > /dev/null
 
@@ -1156,8 +1155,8 @@ src[0]=""
 src_index=-1
 
 while [ "$(pwd)" != "$ROOT" ]; do
-	[ -e $PRJ_VARS1 ] && src[++src_index]="$(pwd)/$PRJ_VARS1"
-	[ -e $PRJ_VARS2 ] && src[++src_index]="$(pwd)/$PRJ_VARS2"
+	[ -r "$PRJ_VARS1" ] && src[++src_index]="$(pwd)/$PRJ_VARS1"
+	[ -r "$PRJ_VARS2" ] && src[++src_index]="$(pwd)/$PRJ_VARS2"
 	cd ..
 done
 popd > /dev/null 2>&1
@@ -1165,29 +1164,41 @@ popd > /dev/null 2>&1
 while [ $src_index -ge 0 ]; do
 	a=${src[src_index--]}
 	[ $PRJ_SILENT -eq 0 ] && say "### @@ $a\n"
-	pushd $(dirname $a) > /dev/null
+	pushd "$(dirname "$a")" > /dev/null
 	source ./"$(basename $a)"
 	popd > /dev/null
 done
 
-TARGET_TARGET_BIN="$TARGET_TARGET-${TARGET_CODE}${TARGET_CODE2}"
-TARGET_PATH="arch/$TARGET_CPUARCH/boot"
-TARGET_UBOOT_BIN="uboot-$TARGET_CODE-dimka.bin"
-TARGET_O="${TARGET_O_PREFIX}/o-$TARGET_CODE"
-TARGET_U="${TARGET_O_PREFIX}/u-$TARGET_CODE"
-if [ ! -z "$TARGET_CP" ]; then
-	TARGET_CUSTOM_CP=${TARGET_CP}
+TARGET_TARGET_BIN="${TARGET_TARGET_BIN:-$TARGET_TARGET-${TARGET_CODE}${TARGET_CODE2}}"
+TARGET_PATH="${TARGET_PATH:-arch/$TARGET_CPUARCH/boot}"
+TARGET_UBOOT_BIN="${TARGET_UBOOT_BIN:-uboot-$TARGET_CODE-dimka.bin}"
+TARGET_O="${TARGET_O:-${TARGET_O_PREFIX}/o-$TARGET_CODE}"
+TARGET_U="${TARGET_U:-${TARGET_O_PREFIX}/u-$TARGET_CODE}"
+if [ -n "$TARGET_CP" ] && [ -z "$TARGET_CUSTOM_CP" ]; then
+	TARGET_CUSTOM_CP="$TARGET_CP"
 fi
+TARGET_CUSTOM_CP="${TARGET_CUSTOM_CP:-cp}"
 
-COLOR_Reset="$(tput sgr0)"
-COLOR_Black="$(tput setaf 0)"
-COLOR_Red="$(tput setaf 1)"
-COLOR_Green="$(tput setaf 2)"
-COLOR_Yellow="$(tput setaf 3)"
-COLOR_Blue="$(tput setaf 4)"
-COLOR_Magenta="$(tput setaf 5)"
-COLOR_Cyan="$(tput setaf 6)"
-COLOR_White="$(tput setaf 7)"
+COLOR_Reset=""
+COLOR_Black=""
+COLOR_Red=""
+COLOR_Green=""
+COLOR_Yellow=""
+COLOR_Blue=""
+COLOR_Magenta=""
+COLOR_Cyan=""
+COLOR_White=""
+if [ -n "${TERM:-}" ] && [ "$TERM" != "dumb" ] && command -v tput >/dev/null 2>&1 && tput colors >/dev/null 2>&1; then
+	COLOR_Reset="$(tput sgr0)"
+	COLOR_Black="$(tput setaf 0)"
+	COLOR_Red="$(tput setaf 1)"
+	COLOR_Green="$(tput setaf 2)"
+	COLOR_Yellow="$(tput setaf 3)"
+	COLOR_Blue="$(tput setaf 4)"
+	COLOR_Magenta="$(tput setaf 5)"
+	COLOR_Cyan="$(tput setaf 6)"
+	COLOR_White="$(tput setaf 7)"
+fi
 
 # start with exporting variables...
 _do_all "$VARIABLES" export
@@ -1235,9 +1246,11 @@ function mouse-driver() {
 	popd
 }
 
-source ~/bin/nvgerrit-cli-aliases
+[ -r "$HOME/bin/nvgerrit-cli-aliases" ] && source "$HOME/bin/nvgerrit-cli-aliases"
 
-complete -cf sudo
+if [[ $- == *i* ]]; then
+	complete -cf sudo
+fi
 
 ME_SHORT=$(hostname -s)
 ME=$(hostname -f 2>/dev/null || hostname)
@@ -1258,7 +1271,7 @@ for CUSTOMIZATION_DIR in "${HOME}/hosts" "${HOME}/etc/hosts/" "${HOME}/etc" "/et
    [ -z "${CUSTOMIZATION_FOUND}" ] && [ -f "${CUSTOMIZATION_DIR}/${ME_SHORT}.conf" ] && CUSTOMIZATION_FOUND=${CUSTOMIZATION_DIR}/${ME_SHORT}.conf
    if [ -n "${CUSTOMIZATION_FOUND}" ]; then
 	say "### Configuring using ${CUSTOMIZATION_FOUND}\n"
-	source ${CUSTOMIZATION_FOUND}
+	source "${CUSTOMIZATION_FOUND}"
         break
    fi
 done
@@ -1276,4 +1289,4 @@ fi
 shift
 say "### -> \"$cmd\" $*\n"
 fix_arch
-$cmd $*
+"$cmd" "$@"
