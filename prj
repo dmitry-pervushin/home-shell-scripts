@@ -9,7 +9,7 @@
 # own risk
 #
 
-PRJ_VERSION="20260609"
+PRJ_VERSION="20260819"
 
 [ -r "$HOME/hosts/load-private" ] && . "$HOME/hosts/load-private"
 
