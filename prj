@@ -1384,7 +1384,13 @@ function all-gerrits() {
 }
 
 function list-functions() {
-        declare -F | cut -f 3 -d ' ' | grep -v "_.*" | sort | column -c 3
+	local functions
+	functions=$(declare -F | cut -f 3 -d ' ' | grep -v "_.*" | sort)
+	if command -v column >/dev/null 2>&1; then
+		printf '%s\n' "$functions" | column -c 3
+	else
+		printf '%s\n' "$functions"
+	fi
 }
 
 function cross_compile() {
