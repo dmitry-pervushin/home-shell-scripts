@@ -38,6 +38,9 @@ edited in place (for example `~/bin/prj`), run
 `shell-scripts-capture-installed` before publishing it with
 `shell-scripts-push`.
 
+Before publishing a change, update `PRJ_VERSION` in `prj`. Use `YYYYMMDD` for
+the first release of a day and `YYYYMMDD_HHMM` for later releases that day.
+
 The consolidation intentionally excludes machine binaries and generated or
 vendor artifacts found in `~/bin`: ELF executables, Android platform-tools,
 archives, Python bytecode, AppleDouble metadata and broken absolute symlinks.
