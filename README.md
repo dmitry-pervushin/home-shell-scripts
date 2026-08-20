@@ -26,6 +26,18 @@ line tools and report which optional tools used by common helpers are missing.
 If `tput` or its terminfo database is unavailable, prompt colors fall back to
 standard ANSI escape sequences.
 
+The first interactive shell of each calendar day fetches `origin/master` and
+compares the GitHub commit, the local repository, and installed managed files.
+It stays quiet when everything matches and suggests `shell-scripts-update`,
+`shell-scripts-push`, or a merge when the corresponding side has changes. Run
+`shell-scripts-check-daily --force` for an immediate check, or set
+`SHELL_SCRIPTS_DAILY_CHECK=0` to disable the automatic check.
+
+`shell-scripts-diff` includes installed-file differences. If a managed file was
+edited in place (for example `~/bin/prj`), run
+`shell-scripts-capture-installed` before publishing it with
+`shell-scripts-push`.
+
 The consolidation intentionally excludes machine binaries and generated or
 vendor artifacts found in `~/bin`: ELF executables, Android platform-tools,
 archives, Python bytecode, AppleDouble metadata and broken absolute symlinks.

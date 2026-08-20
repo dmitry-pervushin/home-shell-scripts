@@ -561,7 +561,7 @@ function _do_all() {
 }
 
 function shell-scripts-check() {
-	local required_commands="sh bash git cp chmod mkdir touch ln dirname basename pwd hostname grep sed tr"
+	local required_commands="sh bash git cp chmod mkdir touch ln dirname basename pwd hostname grep sed tr date cmp readlink"
 	local optional_commands="tput make ssh scp rsync python3 vim"
 	local cmd path
 	local missing=0
@@ -598,6 +598,129 @@ function _shell_scripts_repo() {
 	fi
 }
 
+function _shell_scripts_managed_installed_files() {
+	local repo="$1"
+	local relative
+
+	printf '%s\t%s\n' "$repo/bash_profile" "$HOME/.bash_profile"
+	printf '%s\t%s\n' "$repo/prj" "$HOME/bin/prj"
+	printf '%s\t%s\n' "$repo/project-vars" "$HOME/defaults/project-vars"
+	while IFS= read -r relative; do
+		printf '%s\t%s\n' "$repo/$relative" "$HOME/$relative"
+	done < <(git -C "$repo" ls-files -- bin)
+}
+
+function _shell_scripts_canonical_directory() {
+	(
+		CDPATH=
+		cd "$1" 2>/dev/null && pwd -P
+	)
+}
+
+function _shell_scripts_installed_hosts_target() {
+	local target
+	[ -L "$HOME/hosts" ] || return 1
+	target=$(readlink "$HOME/hosts") || return 1
+	case "$target" in
+		/*) ;;
+		*) target="$(dirname "$HOME/hosts")/$target" ;;
+	esac
+	_shell_scripts_canonical_directory "$target"
+}
+
+function _shell_scripts_file_matches_history() {
+	local repo="$1"
+	local relative="$2"
+	local installed_file="$3"
+	local installed_blob commit blob
+	installed_blob=$(git -C "$repo" hash-object "$installed_file") || return 1
+
+	while IFS= read -r commit; do
+		blob=$(git -C "$repo" rev-parse "$commit:$relative" 2>/dev/null) || continue
+		[ "$blob" = "$installed_blob" ] && return 0
+	done < <(git -C "$repo" log --format='%H' --all -- "$relative")
+	return 1
+}
+
+function _shell_scripts_installed_has_edits() {
+	local repo="$1"
+	local repo_file installed_file relative
+
+	while IFS=$'\t' read -r repo_file installed_file; do
+		relative=${repo_file#"$repo/"}
+		[ -e "$installed_file" ] || return 0
+		if ! cmp -s "$repo_file" "$installed_file" && ! _shell_scripts_file_matches_history "$repo" "$relative" "$installed_file"; then
+			return 0
+		fi
+	done < <(_shell_scripts_managed_installed_files "$repo")
+	return 1
+}
+
+function _shell_scripts_installed_is_clean() {
+	local repo="$1"
+	local repo_file installed_file
+	local installed_hosts repo_hosts
+
+	while IFS=$'\t' read -r repo_file installed_file; do
+		[ -e "$installed_file" ] || return 1
+		cmp -s "$repo_file" "$installed_file" || return 1
+	done < <(_shell_scripts_managed_installed_files "$repo")
+
+	installed_hosts=$(_shell_scripts_installed_hosts_target) || return 1
+	repo_hosts=$(_shell_scripts_canonical_directory "$repo/hosts") || return 1
+	[ "$installed_hosts" = "$repo_hosts" ] || return 1
+	return 0
+}
+
+function _shell_scripts_diff_installed() {
+	local repo="$1"
+	local repo_file installed_file relative
+	local installed_hosts="" repo_hosts
+
+	echo "# Installed file differences"
+	while IFS=$'\t' read -r repo_file installed_file; do
+		relative=${repo_file#"$repo/"}
+		if [ ! -e "$installed_file" ]; then
+			echo "missing installed file: $installed_file ($relative)"
+		elif ! cmp -s "$repo_file" "$installed_file"; then
+			echo "## $relative differs from $installed_file"
+			git --no-pager diff --no-index -- "$repo_file" "$installed_file" || [ $? -eq 1 ] || return
+		fi
+	done < <(_shell_scripts_managed_installed_files "$repo")
+
+	repo_hosts=$(_shell_scripts_canonical_directory "$repo/hosts") || return
+	installed_hosts=$(_shell_scripts_installed_hosts_target) || true
+	if [ -z "$installed_hosts" ]; then
+		echo "missing installed symlink: $HOME/hosts -> $repo/hosts"
+	elif [ "$installed_hosts" != "$repo_hosts" ]; then
+		echo "wrong installed symlink: $HOME/hosts -> $(readlink "$HOME/hosts")"
+		echo "expected: $HOME/hosts -> $repo_hosts"
+	fi
+}
+
+function shell-scripts-capture-installed() {
+	local repo repo_file installed_file relative
+	local missing=0
+	repo=$(_shell_scripts_repo)
+	git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+		echo "Not a Git work tree: $repo" >&2
+		return 1
+	}
+
+	while IFS=$'\t' read -r repo_file installed_file; do
+		relative=${repo_file#"$repo/"}
+		if [ ! -e "$installed_file" ]; then
+			echo "Cannot capture missing installed file: $installed_file" >&2
+			missing=1
+		elif ! cmp -s "$repo_file" "$installed_file"; then
+			cp -p "$installed_file" "$repo_file" || return
+			echo "Captured $installed_file -> $relative"
+		fi
+	done < <(_shell_scripts_managed_installed_files "$repo")
+
+	return "$missing"
+}
+
 function shell-scripts-update() {
 	local repo
 	repo=$(_shell_scripts_repo)
@@ -612,6 +735,7 @@ function shell-scripts-update() {
 
 function shell-scripts-diff() {
 	local repo
+	local base="master"
 	repo=$(_shell_scripts_repo)
 	git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
 		echo "Not a Git work tree: $repo" >&2
@@ -623,10 +747,84 @@ function shell-scripts-diff() {
 		return 1
 	}
 
-	echo "# shell-scripts diff against master"
+	if git -C "$repo" rev-parse --verify origin/master >/dev/null 2>&1; then
+		base="origin/master"
+	fi
+
+	echo "# Repository diff against $base"
 	git -C "$repo" status --short --branch
-	git -C "$repo" diff --check master || return
-	git -C "$repo" diff master
+	git -C "$repo" diff --check "$base" || return
+	git -C "$repo" diff "$base"
+	_shell_scripts_diff_installed "$repo"
+}
+
+function shell-scripts-check-daily() {
+	local repo cache_dir stamp today last_check=""
+	local head_commit remote_commit
+	local remote_newer=0 local_newer=0 installed_changed=0 installed_stale=0
+	repo=$(_shell_scripts_repo)
+	git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+
+	cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/home-shell-scripts"
+	stamp="$cache_dir/daily-check"
+	today=$(date '+%Y-%m-%d') || return
+	[ -r "$stamp" ] && IFS= read -r last_check < "$stamp"
+	if [ "${1:-}" != "--force" ] && [ "$last_check" = "$today" ]; then
+		return 0
+	fi
+	mkdir -p "$cache_dir" || return
+	printf '%s\n' "$today" > "$stamp"
+
+	if ! git -C "$repo" fetch --quiet origin master; then
+		echo "home-shell-scripts: daily GitHub check failed; will retry tomorrow." >&2
+		return 0
+	fi
+
+	head_commit=$(git -C "$repo" rev-parse HEAD) || return
+	remote_commit=$(git -C "$repo" rev-parse origin/master) || return
+	if [ "$head_commit" != "$remote_commit" ]; then
+		if git -C "$repo" merge-base --is-ancestor "$head_commit" origin/master; then
+			remote_newer=1
+		elif git -C "$repo" merge-base --is-ancestor origin/master "$head_commit"; then
+			local_newer=1
+		else
+			remote_newer=1
+			local_newer=1
+		fi
+	fi
+
+	[ -n "$(git -C "$repo" status --porcelain)" ] && local_newer=1
+	if ! _shell_scripts_installed_is_clean "$repo"; then
+		if _shell_scripts_installed_has_edits "$repo"; then
+			local_newer=1
+			installed_changed=1
+		else
+			installed_stale=1
+		fi
+	fi
+
+	if [ "$remote_newer" -eq 0 ] && [ "$local_newer" -eq 0 ] && [ "$installed_stale" -eq 0 ]; then
+		return 0
+	fi
+
+	shell-scripts-diff
+	if [ "$remote_newer" -eq 0 ] && [ "$local_newer" -eq 0 ] && [ "$installed_stale" -eq 1 ]; then
+		echo "home-shell-scripts: installed copies are older than the repository."
+		echo "Suggested reinstall: \"$repo/shell-scripts-install\""
+	elif [ "$remote_newer" -eq 1 ] && [ "$local_newer" -eq 0 ]; then
+		echo "home-shell-scripts: GitHub master is newer."
+		echo "Suggested update: shell-scripts-update"
+	elif [ "$remote_newer" -eq 0 ] && [ "$local_newer" -eq 1 ]; then
+		echo "home-shell-scripts: local repository or installed files have changes."
+		[ "$installed_changed" -eq 1 ] && echo "If the installed edits are intentional, capture them: shell-scripts-capture-installed"
+		[ "$installed_stale" -eq 1 ] && echo "Reinstall stale copies: \"$repo/shell-scripts-install\""
+		echo "Suggested publish: shell-scripts-push"
+	else
+		echo "home-shell-scripts: GitHub and local files both have changes."
+		[ "$installed_changed" -eq 1 ] && echo "If the installed edits are intentional, capture them first: shell-scripts-capture-installed"
+		[ "$installed_stale" -eq 1 ] && echo "Installed copies are stale; reinstall after merging."
+		echo "Review above, then merge: git -C \"$repo\" merge origin/master"
+	fi
 }
 
 function shell-scripts-push() {
@@ -1353,6 +1551,9 @@ done
 export HISTTIMEFORMAT="%d/%m/%y %T "
 
 export PROMPT_COMMAND="ps1_helper ${COLOR}"
+if [[ $- == *i* ]] && [ "${SHELL_SCRIPTS_DAILY_CHECK:-1}" != "0" ]; then
+	shell-scripts-check-daily
+fi
 if [ "x$1" == "x" ]; then
    cmd="setup"
    say "### calling setup\n"
