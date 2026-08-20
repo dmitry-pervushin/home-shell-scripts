@@ -730,7 +730,10 @@ function shell-scripts-update() {
 	}
 	git -C "$repo" checkout master || return
 	git -C "$repo" pull --rebase --autostash "$@" origin master || return
-	"$repo/shell-scripts-install"
+	"$repo/shell-scripts-install" || return
+
+	# Use the freshly installed definitions in this shell as well as in new ones.
+	source "$HOME/bin/prj" setup
 }
 
 function shell-scripts-diff() {
