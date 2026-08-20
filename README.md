@@ -15,6 +15,8 @@ is still available and delegates to the same script.
 
 After loading `prj`, run `shell-scripts-check` to verify the required command
 line tools and report which optional tools used by common helpers are missing.
+If `tput` or its terminfo database is unavailable, prompt colors fall back to
+standard ANSI escape sequences.
 
 The consolidation intentionally excludes machine binaries and generated or
 vendor artifacts found in `~/bin`: ELF executables, Android platform-tools,

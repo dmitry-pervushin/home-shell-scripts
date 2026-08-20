@@ -555,7 +555,7 @@ function _do_all() {
 }
 
 function shell-scripts-check() {
-	local required_commands="sh bash git cp chmod mkdir touch ln dirname pwd hostname grep sed tr"
+	local required_commands="sh bash git cp chmod mkdir touch ln dirname basename pwd hostname grep sed tr"
 	local optional_commands="tput make ssh scp rsync python3 vim"
 	local cmd path
 	local missing=0
@@ -1230,16 +1230,28 @@ COLOR_Blue=""
 COLOR_Magenta=""
 COLOR_Cyan=""
 COLOR_White=""
-if [ -n "${TERM:-}" ] && [ "$TERM" != "dumb" ] && command -v tput >/dev/null 2>&1 && tput colors >/dev/null 2>&1; then
-	COLOR_Reset="$(tput sgr0)"
-	COLOR_Black="$(tput setaf 0)"
-	COLOR_Red="$(tput setaf 1)"
-	COLOR_Green="$(tput setaf 2)"
-	COLOR_Yellow="$(tput setaf 3)"
-	COLOR_Blue="$(tput setaf 4)"
-	COLOR_Magenta="$(tput setaf 5)"
-	COLOR_Cyan="$(tput setaf 6)"
-	COLOR_White="$(tput setaf 7)"
+if [ -n "${TERM:-}" ] && [ "$TERM" != "dumb" ]; then
+	if command -v tput >/dev/null 2>&1 && tput colors >/dev/null 2>&1; then
+		COLOR_Reset="$(tput sgr0)"
+		COLOR_Black="$(tput setaf 0)"
+		COLOR_Red="$(tput setaf 1)"
+		COLOR_Green="$(tput setaf 2)"
+		COLOR_Yellow="$(tput setaf 3)"
+		COLOR_Blue="$(tput setaf 4)"
+		COLOR_Magenta="$(tput setaf 5)"
+		COLOR_Cyan="$(tput setaf 6)"
+		COLOR_White="$(tput setaf 7)"
+	else
+		COLOR_Reset="$(printf '\033[0m')"
+		COLOR_Black="$(printf '\033[30m')"
+		COLOR_Red="$(printf '\033[31m')"
+		COLOR_Green="$(printf '\033[32m')"
+		COLOR_Yellow="$(printf '\033[33m')"
+		COLOR_Blue="$(printf '\033[34m')"
+		COLOR_Magenta="$(printf '\033[35m')"
+		COLOR_Cyan="$(printf '\033[36m')"
+		COLOR_White="$(printf '\033[37m')"
+	fi
 fi
 
 # start with exporting variables...
