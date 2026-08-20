@@ -582,19 +582,31 @@ function shell-scripts-check() {
 	return "$missing"
 }
 
+function _shell_scripts_repo() {
+	if [ -n "${SHELL_SCRIPTS_REPO:-}" ]; then
+		printf '%s\n' "$SHELL_SCRIPTS_REPO"
+	elif [ -d "$HOME/P" ]; then
+		printf '%s\n' "$HOME/P/home-shell-scripts"
+	else
+		printf '%s\n' "$HOME/home-shell-scripts"
+	fi
+}
+
 function shell-scripts-update() {
-	local repo="${SHELL_SCRIPTS_REPO:-$HOME/P/home-stuff}"
+	local repo
+	repo=$(_shell_scripts_repo)
 	git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
 		echo "Not a Git work tree: $repo" >&2
 		return 1
 	}
 	git -C "$repo" checkout master || return
 	git -C "$repo" pull --rebase --autostash "$@" origin master || return
-	"$repo/shell-scripts/shell-scripts-install"
+	"$repo/shell-scripts-install"
 }
 
 function shell-scripts-diff() {
-	local repo="${SHELL_SCRIPTS_REPO:-$HOME/P/home-stuff}"
+	local repo
+	repo=$(_shell_scripts_repo)
 	git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
 		echo "Not a Git work tree: $repo" >&2
 		return 1
@@ -606,15 +618,16 @@ function shell-scripts-diff() {
 	}
 
 	echo "# shell-scripts diff against master"
-	git -C "$repo" status --short --branch -- shell-scripts
-	git -C "$repo" diff --check master -- shell-scripts || return
-	git -C "$repo" diff master -- shell-scripts
+	git -C "$repo" status --short --branch
+	git -C "$repo" diff --check master || return
+	git -C "$repo" diff master
 }
 
 function shell-scripts-push() {
-	local repo="${SHELL_SCRIPTS_REPO:-$HOME/P/home-stuff}"
+	local repo
 	local message="${*:-Update shell scripts}"
 	local current_branch
+	repo=$(_shell_scripts_repo)
 	git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
 		echo "Not a Git work tree: $repo" >&2
 		return 1
@@ -628,10 +641,10 @@ function shell-scripts-push() {
 		return 1
 	fi
 
-	git -C "$repo" add -- shell-scripts || return
-	git -C "$repo" diff --cached --check -- shell-scripts || return
-	if ! git -C "$repo" diff --cached --quiet -- shell-scripts; then
-		git -C "$repo" commit -m "$message" -- shell-scripts || return
+	git -C "$repo" add -- . || return
+	git -C "$repo" diff --cached --check || return
+	if ! git -C "$repo" diff --cached --quiet; then
+		git -C "$repo" commit -m "$message" || return
 	else
 		echo "No shell-scripts changes to commit"
 	fi

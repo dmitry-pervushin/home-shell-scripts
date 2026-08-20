@@ -1,6 +1,14 @@
-# Shell scripts
+# Home shell scripts
 
 Consolidated shell environment shared by macOS and Linux hosts.
+
+Clone the repository from GitHub, then install it:
+
+```sh
+git clone git@github.com:dmitry-pervushin/home-shell-scripts.git
+cd home-shell-scripts
+./shell-scripts-install
+```
 
 - `bin/` contains commands and supporting source files.
 - `prj` provides project/build helper functions.
