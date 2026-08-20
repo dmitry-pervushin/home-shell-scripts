@@ -492,7 +492,13 @@ function fix_arch() {
 
 function ps1() {
 	local param_color=$1
+	local prompt_symbol="%"
 
+	if [ "$EUID" -eq 0 ]; then
+		prompt_symbol="#"
+	fi
+
+	echo -n "\[${COLOR_Reset}\]"
 	if [ "$(is-git-controlled)" != "" ]; then
 		echo -n "\[${COLOR_Green}\]git \[${COLOR_Reset}\]"
 	fi
@@ -522,8 +528,8 @@ function ps1() {
 		fi
 		echo -n "${pwd_item}" | tr '\a' ' '
 	done
-	echo -n ')\[${COLOR_Reset}\] '
-	echo -n "% "
+	echo -n ")\[${COLOR_Reset}\] "
+	echo -n "${prompt_symbol} \[${COLOR_Reset}\]"
 }
 
 function ps1_helper() {
