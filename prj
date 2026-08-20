@@ -561,7 +561,7 @@ function shell-scripts-update() {
 		return 1
 	}
 	git -C "$repo" pull --rebase --autostash "$@" || return
-	make -C "$repo/shell-scripts" install
+	"$repo/shell-scripts/shell-scripts-install"
 }
 
 function shell-scripts-diff() {

@@ -9,8 +9,9 @@ Consolidated shell environment shared by macOS and Linux hosts.
 - `hosts/` contains public host configuration.
 - `hosts/private/` contains secrets and is ignored by Git.
 
-Run `make install` to copy the profile, commands and defaults into the current
-home directory and link `~/hosts` to this checkout.
+Run `./shell-scripts-install` to copy the profile, commands and defaults into
+the current home directory and link `~/hosts` to this checkout. `make install`
+is still available and delegates to the same script.
 
 The consolidation intentionally excludes machine binaries and generated or
 vendor artifacts found in `~/bin`: ELF executables, Android platform-tools,

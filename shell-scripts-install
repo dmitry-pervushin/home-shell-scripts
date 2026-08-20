@@ -1,0 +1,37 @@
+#!/bin/sh
+
+set -eu
+
+if [ -z "${HOME:-}" ]; then
+	echo "HOME is not set" >&2
+	exit 1
+fi
+
+script_dir=$(
+	CDPATH=
+	cd "$(dirname "$0")"
+	pwd -P
+)
+
+if [ -e "$HOME/hosts" ] && [ ! -L "$HOME/hosts" ]; then
+	echo "Refusing to replace existing non-symlink: $HOME/hosts" >&2
+	exit 1
+fi
+
+cp "$script_dir/bash_profile" "$HOME/.bash_profile"
+chmod 0755 "$HOME/.bash_profile"
+
+mkdir -p "$HOME/bin"
+cp "$script_dir/prj" "$HOME/bin/prj"
+chmod 0755 "$HOME/bin/prj"
+cp -R "$script_dir/bin/." "$HOME/bin/"
+
+mkdir -p "$HOME/defaults"
+cp "$script_dir/project-vars" "$HOME/defaults/project-vars"
+chmod 0755 "$HOME/defaults/project-vars"
+touch "$HOME/defaults/dontdiff"
+
+ln -sfn "$script_dir/hosts" "$HOME/hosts"
+
+echo "Installed to $HOME"
+echo "You might need to log off and log on to activate changes from .bash_profile"
