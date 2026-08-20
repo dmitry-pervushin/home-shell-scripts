@@ -732,8 +732,13 @@ function shell-scripts-update() {
 	git -C "$repo" pull --rebase --autostash "$@" origin master || return
 	"$repo/shell-scripts-install" || return
 
-	# Use the freshly installed definitions in this shell as well as in new ones.
-	source "$HOME/bin/prj" setup
+	# Use the freshly installed definitions in this shell when it is regular Bash.
+	# POSIX shells (including Bash invoked as sh) cannot parse all of this file.
+	if [ -n "${BASH_VERSION:-}" ] && ! shopt -oq posix; then
+		source "$HOME/bin/prj" setup
+	else
+		echo "Shell functions were installed. Run 'exec bash -l' to load them."
+	fi
 }
 
 function shell-scripts-diff() {
