@@ -9,7 +9,7 @@
 # own risk
 #
 
-PRJ_VERSION="20260819"
+PRJ_VERSION="20260820"
 
 [ -r "$HOME/hosts/load-private" ] && . "$HOME/hosts/load-private"
 
@@ -513,7 +513,7 @@ function ps1() {
                 #     NTG6 or NTG7
                 #     MAIN, DEV-MAIN or MBITION
                 #
-		if printf '%s' "$pwd_item" | tr '[:lower:]' '[:upper:]' | /usr/bin/grep --quiet -E '^(V.?|R[0-9]+|REL[0-9]+|REL-.*|NTG[6-7]|MAIN|DEV-MAIN|MBITION)$'; then
+		if printf '%s' "$pwd_item" | tr '[:lower:]' '[:upper:]' | command grep -qE '^(V.?|R[0-9]+|REL[0-9]+|REL-.*|NTG[6-7]|MAIN|DEV-MAIN|MBITION)$'; then
 			color="${COLOR_Cyan}"
 		fi
 		echo -n "\[${color}\]"
@@ -554,13 +554,42 @@ function _do_all() {
 	done
 }
 
+function shell-scripts-check() {
+	local required_commands="sh bash git cp chmod mkdir touch ln dirname pwd hostname grep sed tr"
+	local optional_commands="tput make ssh scp rsync python3 vim"
+	local cmd path
+	local missing=0
+
+	echo "# Required commands"
+	for cmd in $required_commands; do
+		if path=$(command -v "$cmd" 2>/dev/null); then
+			printf 'ok      %-10s %s\n' "$cmd" "$path"
+		else
+			printf 'missing %-10s\n' "$cmd"
+			missing=1
+		fi
+	done
+
+	echo "# Optional commands used by common helpers"
+	for cmd in $optional_commands; do
+		if path=$(command -v "$cmd" 2>/dev/null); then
+			printf 'ok      %-10s %s\n' "$cmd" "$path"
+		else
+			printf 'optional %-9s not found\n' "$cmd"
+		fi
+	done
+
+	return "$missing"
+}
+
 function shell-scripts-update() {
 	local repo="${SHELL_SCRIPTS_REPO:-$HOME/P/home-stuff}"
 	git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
 		echo "Not a Git work tree: $repo" >&2
 		return 1
 	}
-	git -C "$repo" pull --rebase --autostash "$@" || return
+	git -C "$repo" checkout master || return
+	git -C "$repo" pull --rebase --autostash "$@" origin master || return
 	"$repo/shell-scripts/shell-scripts-install"
 }
 
@@ -571,20 +600,33 @@ function shell-scripts-diff() {
 		return 1
 	}
 
+	git -C "$repo" rev-parse --verify master >/dev/null 2>&1 || {
+		echo "Branch not found: master" >&2
+		return 1
+	}
+
+	echo "# shell-scripts diff against master"
 	git -C "$repo" status --short --branch -- shell-scripts
-	git -C "$repo" diff --check -- shell-scripts || return
-	git -C "$repo" diff --cached --check -- shell-scripts || return
-	git -C "$repo" diff -- shell-scripts
-	git -C "$repo" diff --cached -- shell-scripts
+	git -C "$repo" diff --check master -- shell-scripts || return
+	git -C "$repo" diff master -- shell-scripts
 }
 
 function shell-scripts-push() {
 	local repo="${SHELL_SCRIPTS_REPO:-$HOME/P/home-stuff}"
 	local message="${*:-Update shell scripts}"
+	local current_branch
 	git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
 		echo "Not a Git work tree: $repo" >&2
 		return 1
 	}
+	current_branch=$(git -C "$repo" symbolic-ref --quiet --short HEAD) || {
+		echo "Cannot determine the current Git branch" >&2
+		return 1
+	}
+	if [ "$current_branch" != "master" ]; then
+		echo "Refusing to commit shell-scripts outside branch master" >&2
+		return 1
+	fi
 
 	git -C "$repo" add -- shell-scripts || return
 	git -C "$repo" diff --cached --check -- shell-scripts || return
@@ -593,7 +635,7 @@ function shell-scripts-push() {
 	else
 		echo "No shell-scripts changes to commit"
 	fi
-	git -C "$repo" push
+	git -C "$repo" push origin master
 }
 
 function repo-top() {
@@ -1126,7 +1168,7 @@ function list-functions() {
 }
 
 function cross_compile() {
-	nvl 'verbose; tmp kernel oldconfig' | /usr/bin/grep --only-matching 'CROSS_COMPILE=[^ ]*' | head -1
+	nvl 'verbose; tmp kernel oldconfig' | command grep -o 'CROSS_COMPILE=[^ ]*' | head -1
 }
 shopt -s expand_aliases
 
@@ -1255,8 +1297,9 @@ fi
 ME_SHORT=$(hostname -s)
 ME=$(hostname -f 2>/dev/null || hostname)
 case ${ME_SHORT} in
- dpervushin-dt) COLOR='${COLOR_Yellow}' ;;
+ dd|dpervushin-dt) COLOR='${COLOR_Yellow}' ;;
  mcdimka)       COLOR='${COLOR_Magenta}' ;;
+ brainbox)      COLOR='${COLOR_Red}' ;;
  tower)		COLOR='${COLOR_Cyan}' ;;
  v)             COLOR='${COLOR_Blue}' ;;
  *)             COLOR='${COLOR_White}' ;;
